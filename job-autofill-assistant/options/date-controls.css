@@ -1,0 +1,79 @@
+.date-source[hidden] { display: none !important; }
+.date-picker { display: grid; gap: 4px; min-width: 0; }
+.date-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--yy-input-border, #dce3ef);
+  border-radius: 9px;
+  background: var(--yy-bg, #f5f7fb);
+  color: var(--yy-text-1, #25324b);
+  font: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.date-picker-trigger.is-placeholder { color: var(--yy-text-2, #5d6a80); }
+.date-picker-trigger svg { width: 19px; height: 19px; color: var(--yy-text-2, #5d6a80); flex: none; }
+.date-picker-trigger[aria-expanded="true"] { border-color: var(--shell-blue, #2858e9); background: var(--yy-surface, white); }
+.date-picker-note { color: var(--yy-warning-text, #8b6425); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.date-picker-note:empty { display: none; }
+.resume-calendar {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  width: 330px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--shell-line, #dce3ef);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgb(29 48 85 / 17%);
+  background: var(--shell-paper, #fff);
+  color: var(--shell-ink, #25324b);
+  font: inherit;
+  font-size: 14px;
+}
+.resume-calendar button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.resume-calendar button:enabled:hover { background: var(--yy-primary-soft, #edf2ff); color: var(--shell-blue, #2858e9); }
+.resume-calendar button:disabled { opacity: .35; cursor: default; }
+.resume-calendar button[aria-pressed="true"] { background: #2858e9; color: #fff; font-weight: 700; }
+.resume-calendar button[aria-current="date"]:not([aria-pressed="true"]) { color: var(--shell-blue, #2858e9); font-weight: 700; }
+.calendar-header { display: flex; align-items: center; gap: 2px; margin-bottom: 9px; }
+.calendar-header [data-nav] { flex: 0 0 29px; font-size: 20px; line-height: 1; }
+.calendar-title { display: flex; align-items: center; justify-content: center; flex: 1; gap: 1px; }
+.calendar-title button { font-weight: 700; white-space: nowrap; }
+.calendar-week, .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
+.calendar-week { padding: 4px 0 8px; border-bottom: 1px solid var(--shell-line, #dce3ef); color: var(--shell-muted, #5d6a80); font-size: 12px; }
+.calendar-days { padding-top: 6px; }
+.calendar-outside { display: grid; place-items: center; color: var(--yy-text-3, #8a92a8); font-size: 13px; font-variant-numeric: tabular-nums; }
+.calendar-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-block: 7px; }
+.calendar-choices button { min-height: 40px; }
+.calendar-footer { display: flex; flex-wrap: wrap; gap: 3px 7px; border-top: 1px solid var(--shell-line, #dce3ef); margin-top: 8px; padding-top: 7px; }
+.calendar-footer button { white-space: nowrap; padding-inline: 5px; }
+.calendar-month-action { margin-inline-start: auto; }
+.resume-calendar button.calendar-month-action { color: var(--shell-blue, #2858e9); }
+.calendar-hint { margin: 8px 0 0; font-size: 12px; color: var(--yy-warning-text, #8b6425); }
+.resume-calendar button:focus-visible, .date-picker-trigger:focus-visible, .date-pending button:focus-visible {
+  outline: 2px solid var(--shell-blue, #2858e9);
+  outline-offset: -2px;
+}
+.date-pending { margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--shell-line, #dce3ef); border-radius: 10px; }
+.date-pending summary { cursor: pointer; font-weight: 600; }
+.date-pending p { font-size: 13px; color: var(--shell-muted, #5d6a80); }
+.date-pending button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--shell-line, #edf0f6); padding: 10px; background: transparent; color: inherit; cursor: pointer; }

@@ -1,0 +1,332 @@
+/* ============================================================================
+   yanyu网申填写助手 - 品牌设计系统（共享 Design Tokens）
+   ----------------------------------------------------------------------------
+   popup 与 options 页面共同引用的唯一变量来源：
+   - 主色 indigo #4f46e5，强调色 cyan #06b6d4
+   - 浅色为中性冷灰底 + 白色卡片；深色为低饱和蓝黑 + 深灰卡片
+   - 统一字体、间距、圆角、阴影、焦点态与 reduced-motion 降级
+   页面引用顺序（brand.css 必须在页面私有样式之后加载，以便回填兼容变量）：
+     <link rel="stylesheet" href="options.css">
+     <link rel="stylesheet" href="../styles/brand.css">
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   1. 字体
+   ---------------------------------------------------------------------------- */
+:root {
+  --yy-font-ui: "App UI", -apple-system, "Segoe UI", Arial, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --yy-font-mono: "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+}
+
+.profile-create-dialog {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 24px));
+  padding: 20px;
+  color: var(--yy-text-1);
+  background: var(--yy-surface);
+  border: 1px solid var(--yy-border);
+  border-radius: 14px;
+}
+.profile-create-dialog::backdrop { background: rgb(15 23 42 / 46%); }
+.profile-create-dialog form { display: grid; gap: 10px; }
+.profile-create-dialog h2 { margin: 0 0 4px; font-size: 18px; }
+.profile-create-dialog fieldset { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 8px; border: 1px solid var(--yy-border); border-radius: 8px; }
+.profile-create-dialog input[type="radio"] { margin: 0 4px 0 0; accent-color: var(--yy-primary); }
+.profile-create-dialog input[type="text"], .profile-create-dialog select {
+  box-sizing: border-box; width: 100%; padding: 8px; font: inherit;
+  color: inherit; background: var(--yy-surface-2); border: 1px solid var(--yy-input-border); border-radius: 8px;
+}
+.profile-create-source:not([hidden]) { display: grid; gap: 6px; }
+.profile-create-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.profile-create-actions button { padding: 7px 12px; font: inherit; color: inherit; background: var(--yy-surface-2); border: 1px solid var(--yy-border); border-radius: 8px; cursor: pointer; }
+.profile-create-actions button[type="submit"] { color: var(--yy-on-primary); background: var(--yy-primary); border-color: var(--yy-primary); }
+
+/* ----------------------------------------------------------------------------
+   2. 色彩令牌 - 浅色（默认）
+   ---------------------------------------------------------------------------- */
+:root,
+[data-theme="light"] {
+  /* 背景与表面 */
+  --yy-bg: #f4f6fa;              /* 页面底色：浅中性冷灰 */
+  --yy-surface: #ffffff;         /* 卡片 */
+  --yy-surface-2: #eef1f7;       /* 嵌套块 / 输入框底 */
+  --yy-surface-hover: #e7ebf4;
+  --yy-surface-active: #dfe4f0;
+  --yy-nav-bg: rgba(244, 246, 250, 0.92);
+  --yy-dropdown-bg: #ffffff;
+
+  /* 描边 */
+  --yy-border: #e3e7f0;
+  --yy-border-strong: #ccd3e3;
+  --yy-input-border: #d6dce9;
+  --yy-input-border-focus: #4f46e5;
+
+  /* 文字 */
+  --yy-text-1: #171b26;
+  --yy-text-2: #4b5368;
+  --yy-text-3: #8a92a8;
+  --yy-text-faint: #b9c0d1;
+
+  /* 品牌主色（indigo） */
+  --yy-primary: #4f46e5;
+  --yy-primary-hover: #4338ca;
+  --yy-primary-active: #3730a3;
+  --yy-on-primary: #ffffff;
+  --yy-primary-text: #4f46e5;                     /* 浅底上的主色文字 */
+  --yy-primary-soft: #eef0fe;                      /* 主色浅底 */
+  --yy-primary-soft-border: #d8dcfb;
+  --yy-primary-glow: 0 4px 14px rgba(79, 70, 229, 0.28);
+
+  /* 强调色（cyan） */
+  --yy-accent: #06b6d4;
+  --yy-accent-text: #0e7490;                       /* 浅底上的强调色文字（保证对比度） */
+  --yy-accent-soft: #e0f6fb;
+  --yy-accent-soft-border: #b8ecf7;
+
+  /* 语义色 */
+  --yy-success: #059669;
+  --yy-success-text: #047857;
+  --yy-success-soft: #e6f6f0;
+  --yy-warning: #d97706;
+  --yy-warning-text: #b45309;
+  --yy-warning-soft: #fdf3e2;
+  --yy-danger: #dc2626;
+  --yy-danger-text: #b91c1c;
+  --yy-danger-soft: #fdecec;
+
+  /* 焦点与遮罩 */
+  --yy-focus: #4f46e5;
+  --yy-focus-ring: rgba(79, 70, 229, 0.25);
+  --yy-overlay: rgba(15, 23, 42, 0.45);
+
+  /* 阴影 */
+  --yy-shadow-1: 0 1px 2px rgba(23, 27, 38, 0.06), 0 1px 3px rgba(23, 27, 38, 0.05);
+  --yy-shadow-2: 0 2px 6px rgba(23, 27, 38, 0.06), 0 10px 28px rgba(23, 27, 38, 0.08);
+  --yy-shadow-3: 0 16px 48px rgba(23, 27, 38, 0.2);
+}
+
+/* ----------------------------------------------------------------------------
+   3. 色彩令牌 - 深色
+   ---------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --yy-bg: #0e1118;
+  --yy-surface: #171b25;
+  --yy-surface-2: #1e2330;
+  --yy-surface-hover: #252b3b;
+  --yy-surface-active: #2b3246;
+  --yy-nav-bg: rgba(14, 17, 24, 0.92);
+  --yy-dropdown-bg: #1b2030;
+
+  --yy-border: #272d3d;
+  --yy-border-strong: #3a425a;
+  --yy-input-border: #39415a;
+  --yy-input-border-focus: #818cf8;
+
+  --yy-text-1: #e9ecf4;
+  --yy-text-2: #b3bacb;
+  --yy-text-3: #7d8499;
+  --yy-text-faint: #565e73;
+
+  --yy-primary: #6366f1;
+  --yy-primary-hover: #7c7ff5;
+  --yy-primary-active: #5157d6;
+  --yy-on-primary: #ffffff;
+  --yy-primary-text: #a5b0fc;
+  --yy-primary-soft: rgba(99, 102, 241, 0.16);
+  --yy-primary-soft-border: rgba(99, 102, 241, 0.38);
+  --yy-primary-glow: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+  --yy-accent: #22d3ee;
+  --yy-accent-text: #67e8f9;
+  --yy-accent-soft: rgba(34, 211, 238, 0.13);
+  --yy-accent-soft-border: rgba(34, 211, 238, 0.32);
+
+  --yy-success: #34d399;
+  --yy-success-text: #6ee7b7;
+  --yy-success-soft: rgba(52, 211, 153, 0.13);
+  --yy-warning: #fbbf24;
+  --yy-warning-text: #fcd34d;
+  --yy-warning-soft: rgba(251, 191, 36, 0.13);
+  --yy-danger: #f87171;
+  --yy-danger-text: #fca5a5;
+  --yy-danger-soft: rgba(248, 113, 113, 0.13);
+
+  --yy-focus: #818cf8;
+  --yy-focus-ring: rgba(129, 140, 248, 0.32);
+  --yy-overlay: rgba(0, 0, 0, 0.55);
+
+  --yy-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --yy-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.45), 0 10px 30px rgba(0, 0, 0, 0.4);
+  --yy-shadow-3: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* ----------------------------------------------------------------------------
+   4. 间距 / 圆角 / 尺寸
+   ---------------------------------------------------------------------------- */
+:root {
+  --yy-space-1: 4px;
+  --yy-space-2: 8px;
+  --yy-space-3: 12px;
+  --yy-space-4: 16px;
+  --yy-space-5: 20px;
+  --yy-space-6: 24px;
+
+  --yy-radius-sm: 6px;
+  --yy-radius-md: 10px;
+  --yy-radius-lg: 14px;
+  --yy-radius-full: 999px;
+
+  --yy-control-h: 34px;        /* 常规输入/按钮高度 */
+  --yy-control-h-lg: 42px;     /* 主操作按钮高度 */
+}
+
+/* ----------------------------------------------------------------------------
+   5. 焦点态（键盘可见焦点；鼠标点击不出现描边）
+   ---------------------------------------------------------------------------- */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--yy-focus);
+  outline-offset: 1px;
+  border-radius: var(--yy-radius-sm);
+}
+
+/* ----------------------------------------------------------------------------
+   6. 动效降级
+   ---------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   7. 滚动条（WebKit / Chrome 扩展页面）
+   ---------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--yy-border-strong);
+  border-radius: var(--yy-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--yy-text-faint);
+}
+
+/* ----------------------------------------------------------------------------
+   8. 选中文本
+   ---------------------------------------------------------------------------- */
+::selection {
+  background: var(--yy-primary-soft);
+  color: var(--yy-text-1);
+}
+
+[data-theme="dark"] ::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: var(--yy-text-1);
+}
+
+/* ----------------------------------------------------------------------------
+   9. 兼容层：将旧版页面样式使用的变量名映射到品牌令牌
+   （options.css 等历史样式表内部大量消费以下变量，统一在此回填，
+     页面需在私有样式之后加载本文件，保证此处定义优先生效）
+   ---------------------------------------------------------------------------- */
+:root,
+[data-theme="light"] {
+  --font-ui: var(--yy-font-ui);
+  --bg: var(--yy-bg);
+  --bg-gradient: none;
+  --nav-bg: var(--yy-nav-bg);
+  --glass-card: var(--yy-surface);
+  --glass-card-nested: var(--yy-surface-2);
+  --glass-card-hover: var(--yy-surface-hover);
+  --glass-border: var(--yy-border);
+  --glass-border-highlight: var(--yy-primary-soft-border);
+  --glass-inner-shadow: none;
+  --input-bg: var(--yy-surface);
+  --input-border: var(--yy-input-border);
+  --text-main: var(--yy-text-1);
+  --text-secondary: var(--yy-text-2);
+  --text-muted: var(--yy-text-3);
+  --text-faint: var(--yy-text-faint);
+  --primary-color: var(--yy-primary);
+  --primary-gradient: var(--yy-primary);
+  --primary-gradient-hover: var(--yy-primary-hover);
+  --primary-glow: var(--yy-primary-glow);
+  --accent-glow: var(--yy-primary-soft);
+  --card-shadow: var(--yy-shadow-2);
+  --toast-bg: var(--yy-dropdown-bg);
+  --accent-bg-subtle: var(--yy-primary-soft);
+  --accent-border-subtle: var(--yy-primary-soft-border);
+  /* popup 历史变量名 */
+  --card-bg: var(--yy-surface);
+  --card-nested: var(--yy-surface-2);
+  --card-nested-hover: var(--yy-surface-hover);
+  --border: var(--yy-border);
+  --border-highlight: var(--yy-border-strong);
+  --accent-blue: var(--yy-primary);
+  --accent-blue-hover: var(--yy-primary-hover);
+  --accent-blue-active: var(--yy-primary-active);
+  --btn-secondary-bg: var(--yy-surface-2);
+  --btn-secondary-hover: var(--yy-surface-hover);
+  --status-green: var(--yy-success);
+  --status-amber: var(--yy-warning);
+  --status-red: var(--yy-danger);
+}
+
+[data-theme="dark"] {
+  --font-ui: var(--yy-font-ui);
+  --bg: var(--yy-bg);
+  --bg-gradient: none;
+  --nav-bg: var(--yy-nav-bg);
+  --glass-card: var(--yy-surface);
+  --glass-card-nested: var(--yy-surface-2);
+  --glass-card-hover: var(--yy-surface-hover);
+  --glass-border: var(--yy-border);
+  --glass-border-highlight: var(--yy-primary-soft-border);
+  --glass-inner-shadow: none;
+  --input-bg: var(--yy-surface-2);
+  --input-border: var(--yy-input-border);
+  --text-main: var(--yy-text-1);
+  --text-secondary: var(--yy-text-2);
+  --text-muted: var(--yy-text-3);
+  --text-faint: var(--yy-text-faint);
+  --primary-color: var(--yy-primary);
+  --primary-gradient: var(--yy-primary);
+  --primary-gradient-hover: var(--yy-primary-hover);
+  --primary-glow: var(--yy-primary-glow);
+  --accent-glow: var(--yy-primary-soft);
+  --card-shadow: var(--yy-shadow-2);
+  --toast-bg: var(--yy-dropdown-bg);
+  --accent-bg-subtle: var(--yy-primary-soft);
+  --accent-border-subtle: var(--yy-primary-soft-border);
+  --card-bg: var(--yy-surface);
+  --card-nested: var(--yy-surface-2);
+  --card-nested-hover: var(--yy-surface-hover);
+  --border: var(--yy-border);
+  --border-highlight: var(--yy-border-strong);
+  --accent-blue: var(--yy-primary);
+  --accent-blue-hover: var(--yy-primary-hover);
+  --accent-blue-active: var(--yy-primary-active);
+  --btn-secondary-bg: var(--yy-surface-2);
+  --btn-secondary-hover: var(--yy-surface-hover);
+  --status-green: var(--yy-success);
+  --status-amber: var(--yy-warning);
+  --status-red: var(--yy-danger);
+}

@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>易offer · 求职工作台</title>
+  <link rel="icon" href="../icons/icon48.png">
+  <script src="../scripts/theme-init.js"></script>
+  <link rel="stylesheet" href="../fonts/app-ui.css">
+  <link rel="stylesheet" href="options.css">
+  <link rel="stylesheet" href="../styles/brand.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="product.css">
+  <link rel="stylesheet" href="date-controls.css">
+  <link rel="stylesheet" href="tracker.css">
+</head>
+<body>
+  <!-- 背景氛围光晕 -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <!-- 顶部导航栏 (Apple HIG 极简半透明毛玻璃) -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-left">
+        <a class="nav-brand" href="#product">
+          <img src="../icons/icon48.png" alt="" class="nav-logo">
+          <span class="nav-title"><span class="nav-title-en">易offer</span>网申填写助手</span>
+        </a>
+
+        <!-- 顶栏核心视图切换器 (靠左对齐，彻底杜绝与右侧重合) -->
+        <div class="nav-tabs-pill" id="navTabsPill">
+          <button type="button" class="nav-tab-btn active" data-tab="profile" id="tabBtnProfile">
+            <span class="tab-icon">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3.5"/><circle cx="9" cy="11" r="2.5"/><path d="M15 9h3M15 13h3M5.5 16.5c0-1.6 1.6-2.5 3.5-2.5s3.5.9 3.5 2.5"/></svg>
+            </span>
+            <span class="tab-text">简历资料</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <!-- 资料切换与管理组、保存/导入/导出 已移至「简历资料」视图右侧栏 (#profileRail) -->
+
+        <button type="button" id="themeToggle" class="btn-nav-icon" title="切换深色/浅色主题" aria-label="切换深色/浅色主题">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main-container">
+    <section id="page-product" class="shell-page" aria-labelledby="product-title" hidden>
+      <div class="product-hero">
+        <svg class="product-orbit" viewBox="0 0 1440 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <ellipse cx="720" cy="360" rx="639" ry="229" transform="rotate(-12 720 360)"/>
+          <ellipse cx="720" cy="360" rx="610" ry="267" transform="rotate(12 720 360)"/>
+          <circle cx="211" cy="530" r="4"/><circle cx="1232" cy="216" r="5"/><circle cx="1081" cy="610" r="3"/>
+        </svg>
+        <div class="product-float product-float-resume" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect x="7" y="3" width="18" height="25" rx="4"/><circle cx="16" cy="11" r="2.5"/><path d="M12 17h8m-8 5h5"/></svg>
+        </div>
+        <div class="product-float product-float-scan" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M5 12V7a2 2 0 0 1 2-2h5m8 0h5a2 2 0 0 1 2 2v5m0 8v5a2 2 0 0 1-2 2h-5m-8 0H7a2 2 0 0 1-2-2v-5M2 16h28"/><path d="M11 11h10m-8 10h6"/></svg>
+        </div>
+        <div class="product-float product-float-calendar" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect x="5" y="7" width="22" height="20" rx="4"/><path d="M5 13h22M11 4v6m10-6v6m-10 9h3m4 0h3m-10 4h3"/></svg>
+        </div>
+        <div class="product-float product-float-bookmark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M9 6h14a2 2 0 0 1 2 2v19l-9-6-9 6V8a2 2 0 0 1 2-2Z"/><path d="M16 10v7m-3.5-3.5h7"/></svg>
+        </div>
+        <div class="product-float product-float-check" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><path d="m11 16 3.5 3.5 6.5-7"/></svg>
+        </div>
+        <div class="product-float product-float-grid" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect x="5" y="5" width="9" height="9" rx="2"/><rect x="18" y="5" width="9" height="9" rx="2"/><rect x="5" y="18" width="9" height="9" rx="2"/><path d="M22.5 18v9m-4.5-4.5h9"/></svg>
+        </div>
+        <div class="product-hero-copy">
+          <p class="product-kicker"><span></span> easyoffer / 网申填写助手</p>
+          <h1 id="product-title"><span>从一份简历</span><em>到每一次网申</em></h1>
+          <p class="product-intro">把简历资料带进网申表单，把心仪的岗位留在求职工作台。</p>
+          <div class="product-actions">
+            <a class="product-primary" href="#profile-overview">打开我的简历 <span aria-hidden="true">→</span></a>
+            <a class="product-secondary" href="#product-demo">看填写演示 <span aria-hidden="true">↓</span></a>
+          </div>
+        </div>
+        <div class="product-quicklinks" aria-label="产品功能快捷入口">
+          <a href="#section-parser"><span>01</span> 简历导入与解析</a>
+          <a href="#help-fill"><span>02</span> 三种填写方式</a>
+          <a href="#tracker"><span>03</span> 岗位与投递进度</a>
+        </div>
+      </div>
+
+      <section id="product-workflow" class="product-workflow" aria-labelledby="workflow-title">
+        <header>
+          <p class="product-kicker"><span></span> THE WORKFLOW</p>
+          <h2 id="workflow-title" tabindex="-1">一次网申，三个步骤</h2>
+        </header>
+        <ol class="product-steps">
+          <li>
+            <span class="product-step-number" aria-hidden="true">01</span>
+            <h3>准备简历</h3>
+            <p>导入或编辑简历，按投递方向保存多份资料。用模块开关决定哪些经历参与填写。</p>
+            <a href="#section-parser">导入简历 <span aria-hidden="true">↗</span></a>
+            <a href="#view-modules">管理模块 <span aria-hidden="true">↗</span></a>
+          </li>
+          <li>
+            <span class="product-step-number" aria-hidden="true">02</span>
+            <h3>打开网申</h3>
+            <p>进入招聘表单，点工具栏的易offer图标打开侧栏。选定简历后，按需使用一键、增量或选区填入。</p>
+            <a href="#help-fill">查看填写方式 <span aria-hidden="true">↗</span></a>
+            <a href="#help-quick">资料速查与点选补填 <span aria-hidden="true">↗</span></a>
+          </li>
+          <li>
+            <span class="product-step-number" aria-hidden="true">03</span>
+            <h3>填入并核对</h3>
+            <p>需要检查时可以暂停。核对表单后自行提交，再从侧栏记录岗位，确认信息后保存到工作台。</p>
+            <a href="#help-pause">暂停与恢复 <span aria-hidden="true">↗</span></a>
+            <a href="#tracker">记录投递 <span aria-hidden="true">↗</span></a>
+          </li>
+        </ol>
+      </section>
+
+      <section id="product-demo" class="product-workflow product-demo" aria-labelledby="product-demo-title" data-stage="local">
+        <div class="product-demo-guide">
+          <p class="product-kicker"><span></span> 填写演示</p>
+          <h2 id="product-demo-title" tabindex="-1">一张表单，<br>三种处理方式</h2>
+          <p>切换下面的步骤，看看哪些字段由易offer直接填入，哪些需要 AI 或你本人处理。</p>
+          <div class="product-demo-steps" role="group" aria-label="演示步骤">
+            <button type="button" data-demo-stage="local" aria-pressed="true"><small>01</small><span>标准字段</span><span aria-hidden="true">↗</span></button>
+            <button type="button" data-demo-stage="ai" aria-pressed="false"><small>02</small><span>AI 助填</span><span aria-hidden="true">↗</span></button>
+            <button type="button" data-demo-stage="review" aria-pressed="false"><small>03</small><span>人工核对</span><span aria-hidden="true">↗</span></button>
+          </div>
+          <a class="shell-link" href="#help-ai">查看 AI 配置与使用说明 ↗</a>
+        </div>
+
+        <div class="product-demo-console">
+          <header class="product-demo-bar">
+            <span class="product-demo-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <h3>网申模拟台</h3>
+            <small>合成资料</small>
+          </header>
+          <svg class="product-demo-map" viewBox="0 0 640 210" aria-hidden="true">
+            <defs>
+              <path id="demo-route-local" pathLength="100" d="M144 105H185Q207 105 207 82V54Q207 34 229 34H413Q434 34 434 54V82Q434 105 455 105H496"/>
+              <path id="demo-route-ai" pathLength="100" d="M144 105H496"/>
+              <path id="demo-route-review" pathLength="100" d="M144 105H185Q207 105 207 128V156Q207 176 229 176H413Q434 176 434 156V128Q434 105 455 105H496"/>
+            </defs>
+            <g class="demo-wire"><use href="#demo-route-local"/><use href="#demo-route-ai"/><use href="#demo-route-review"/></g>
+            <use class="demo-signal" data-demo-route="local" href="#demo-route-local"/>
+            <use class="demo-signal" data-demo-route="ai" href="#demo-route-ai"/>
+            <use class="demo-signal" data-demo-route="review" href="#demo-route-review"/>
+            <g class="demo-terminal">
+              <rect x="24" y="59" width="120" height="92" rx="16"/>
+              <path class="demo-symbol" d="M77 77h11l7 7v19H74V77zm11 0v8h7m-15 7h9m-9 5h7"/>
+              <text x="84" y="131">简历资料</text>
+              <rect x="496" y="59" width="120" height="92" rx="16"/>
+              <path class="demo-symbol" d="M545 80h22v21h-22zm0 7h22m-17 6h7m-7 4h12"/>
+              <text x="556" y="131">招聘表单</text>
+            </g>
+            <g class="demo-route-node" data-demo-route="local">
+              <rect x="255" y="12" width="130" height="44" rx="13"/>
+              <text x="320" y="39">标准字段</text>
+            </g>
+            <g class="demo-route-node" data-demo-route="ai">
+              <rect x="255" y="83" width="130" height="44" rx="13"/>
+              <text x="320" y="110">AI 助填</text>
+            </g>
+            <g class="demo-route-node" data-demo-route="review">
+              <rect x="255" y="154" width="130" height="44" rx="13"/>
+              <text x="320" y="181">人工核对</text>
+            </g>
+          </svg>
+          <div class="product-demo-output">
+            <p class="product-demo-explain" role="status">姓名、邮箱这类有明确对应值的字段，先由本地规则填入。</p>
+            <dl class="product-demo-fields" aria-label="模拟表单结果">
+              <div data-demo-field="name" data-tone="filled"><dt>姓名</dt><dd class="demo-field-value">林示例</dd><dd class="demo-field-status">已填入</dd></div>
+              <div data-demo-field="answer" data-tone="waiting"><dt>职业规划</dt><dd class="demo-field-value">有待补充</dd><dd class="demo-field-status">未填写</dd></div>
+              <div data-demo-field="date" data-tone="waiting"><dt>证书到期日</dt><dd class="demo-field-value">请选择具体日期</dd><dd class="demo-field-status">未填写</dd></div>
+            </dl>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- 视图 1: 简历资料配置（三栏工作区：模块导航 / 概览与单模块编辑 / 简历管理） -->
+    <div id="view-profile" class="tab-view active">
+      <div class="profile-workspace">
+
+      <!-- 左栏：概览 / 单模块导航 (仅在简历配置视图有效) -->
+      <aside class="sidebar-drawer" id="sidebarDrawer" aria-label="资料页目录">
+        <div class="drawer-content">
+          <div class="sidebar-header">
+            <span class="sidebar-title">简历模块</span>
+          </div>
+          <!-- 概览 + 模块导航由 options.js 按资料数据动态生成 -->
+          <nav class="sidebar-menu" id="sidebarMenu"></nav>
+
+          <!-- 低频空模块收纳：有数据或用户主动添加后进入上方主导航 -->
+          <div class="sidebar-more" id="sidebarMore" hidden>
+            <button type="button" class="sidebar-more-toggle" id="sidebarMoreToggle" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span class="nav-text">添加更多模块</span>
+              <svg class="more-chevron" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="sidebar-more-list" id="sidebarMoreList"></div>
+          </div>
+
+          <div class="sidebar-footer">
+            <button type="button" id="sidebarSaveBtn" class="btn-sidebar-save">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              <span>保存修改</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 中栏：默认只读简历概览；编辑时仅显示当前模块表单，其余模块隐藏不销毁 -->
+      <div class="profile-main">
+        <div id="moduleBackBar" class="module-back-bar" hidden>
+          <button type="button" id="backToOverviewBtn" class="btn-back-overview">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            <span>返回概览</span>
+          </button>
+          <span id="moduleTitle" class="module-title"></span>
+          <button type="button" id="finishModuleEditBtn" class="btn-finish-module" hidden>保存并查看</button>
+        </div>
+        <div id="profileOverview" class="profile-overview" hidden></div>
+
+        <div class="form-content">
+
+      <!-- AI设置（置顶高亮毛玻璃卡片） -->
+      <section id="section-ai" class="section section-ai glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon ai-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">AI 大模型服务配置</h2>
+              <p class="section-subtitle">配置 API Key 即可开启一键简历智能解析与上下文自适应填表</p>
+            </div>
+          </div>
+
+          <div class="toggle-wrapper">
+            <label class="toggle-switch">
+              <input type="checkbox" id="aiEnabled">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-text">启用 AI 增强</span>
+          </div>
+        </div>
+
+        <div id="aiSettings" class="ai-body" style="display: none;">
+          <div class="form-row">
+            <div class="form-group">
+              <label>AI 服务提供商</label>
+              <div class="select-box">
+                <select id="aiProvider">
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="qwen">通义千问</option>
+                  <option value="glm">智谱 GLM</option>
+                  <option value="kimi">Moonshot Kimi</option>
+                  <option value="doubao">火山引擎 豆包</option>
+                  <option value="siliconflow">硅基流动 SiliconFlow</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Key <span class="required">*</span></label>
+              <div class="input-box">
+                <input type="password" id="aiApiKey" placeholder="sk-..." autocomplete="off">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>自定义 API URL <span class="label-tip">（可选，留空使用官方默认端点）</span></label>
+              <input type="text" id="aiApiUrl" placeholder="例如: https://api.openai.com/v1">
+            </div>
+            <div class="form-group">
+              <label>选用模型 <span class="required">*</span></label>
+              <div class="select-box">
+                <select id="aiModel">
+                  <option value="">填写 API Key 后点击获取</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+              <input type="text" id="aiModelCustom" placeholder="手动填写模型名，如 Qwen/Qwen2.5-7B-Instruct 或豆包 ep-..." style="display: none; margin-top: 8px;">
+            </div>
+          </div>
+
+          <div id="aiModelHint" class="model-hint">填入 API Key 后即可自动拉取可用模型列表</div>
+
+          <div class="toggle-wrapper" style="align-self: flex-start; margin: 4px 0 2px;">
+            <label class="toggle-switch">
+              <input type="checkbox" id="aiSmartFill">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-text">AI 智能补填（用 AI 匹配字典无法识别的字段）</span>
+          </div>
+
+          <div class="ai-actions-row">
+            <button type="button" id="refreshModelsBtn" class="btn-glass-secondary">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>获取可用模型</span>
+            </button>
+            <button type="button" id="testAiBtn" class="btn-glass-secondary">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>测试连接</span>
+            </button>
+          </div>
+
+          <div id="testResult" class="test-result-box" style="display: none;"></div>
+
+          <div class="info-callout">
+            <div class="callout-header">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              <span>各大模型平台 API Key 获取与配置指南：</span>
+            </div>
+            <div class="provider-links">
+              <a href="https://platform.deepseek.com/" target="_blank" rel="noreferrer" class="provider-chip">DeepSeek 平台</a>
+              <a href="https://dashscope.aliyun.com/" target="_blank" rel="noreferrer" class="provider-chip">阿里百炼 (通义千问)</a>
+              <a href="https://open.bigmodel.cn/" target="_blank" rel="noreferrer" class="provider-chip">智谱 AI 平台 (GLM)</a>
+              <a href="https://platform.moonshot.cn/" target="_blank" rel="noreferrer" class="provider-chip">Moonshot Kimi</a>
+              <a href="https://console.volcengine.com/ark" target="_blank" rel="noreferrer" class="provider-chip">火山引擎 豆包 (Ark)</a>
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" class="provider-chip">OpenAI Platform</a>
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" class="provider-chip">Google AI Studio (Gemini)</a>
+              <a href="https://cloud.siliconflow.cn/account/ak" target="_blank" rel="noreferrer" class="provider-chip">硅基流动 API Key</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 简历源文件与 AI 智能解析区 (二合一) -->
+      <section id="section-parser" class="section section-parser glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon parser-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">简历源文件 & AI 智能解析</h2>
+              <p class="section-subtitle">上传简历源文件即可自动保留作为网申代传附件，并支持一键 AI 全量解析</p>
+            </div>
+          </div>
+
+          <div class="parser-header-actions">
+            <input type="file" id="aiResumeFile" accept=".pdf,.doc,.docx,.txt,.md,.tex,.latex,.html,.htm,.png,.jpg,.jpeg,.webp,.avif" style="display: none;">
+            <button type="button" id="aiUploadBtn" class="btn-glass-accent">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span id="aiUploadBtnText">上传 / 导入简历源文件</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 简历源文件状态与绑定卡片 (二合一) -->
+        <div id="resumeAttachmentCard" class="resume-attachment-card" style="display: none;">
+          <div class="attachment-info">
+            <span class="attachment-icon">📎</span>
+            <div class="attachment-meta">
+              <span id="resumeFileName" class="attachment-filename">未上传简历文件</span>
+              <span id="resumeFileSize" class="attachment-filesize"></span>
+            </div>
+            <span class="attachment-tag">已绑定为网申附件</span>
+          </div>
+          <div class="attachment-actions">
+            <button type="button" id="removeResumeFileBtn" class="btn-remove-attachment" title="移除当前简历附件">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span>移除附件</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="aiFileStatus" class="ai-file-status" aria-live="polite" hidden></div>
+
+        <div class="form-group">
+          <textarea id="resumeText" rows="5" class="code-textarea" placeholder="直接粘贴简历文本，或点击上方按钮导入 PDF / Word 简历...
+
+✨ 支持智能识别提取：
+• 基础信息、政治面貌、民族、籍贯、毕业时间、紧急联系人
+• 教育背景（学院、专业、统招学历、GPA、成绩排名、核心课程）
+• 工作/实习（部门、岗位性质、工作城市、STAR法则职责、量化成果）
+• 项目经历（起止时间、技术栈、项目类型、项目链接、个人职责与成果）
+• 求职意向、英语四六级成绩、荣誉奖项与技能标签"></textarea>
+        </div>
+
+        <button id="parseTextBtn" class="btn-gradient-full">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+          </svg>
+          <span>AI 智能解析并自动填入资料</span>
+        </button>
+
+        <!-- HR 打招呼语 / 简历速览总结 -->
+        <div class="hr-greeting-card">
+          <div class="hr-greeting-header">
+            <div class="hr-greeting-title-wrap">
+              <div class="hr-greeting-icon">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="hr-greeting-title">HR 打招呼语 / 简历高光速览</h3>
+                <p class="hr-greeting-desc">直聘打招呼开场白 · 200 字高光自荐信</p>
+              </div>
+            </div>
+            <div class="hr-greeting-actions">
+              <button type="button" id="regenerateGreetingBtn" class="btn-glass-sm" title="基于当前资料重新生成打招呼语">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>AI 重新生成</span>
+              </button>
+              <button type="button" id="copyGreetingBtn" class="btn-copy-greeting">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>一键复制打招呼语</span>
+              </button>
+            </div>
+          </div>
+          <div class="hr-greeting-body">
+            <textarea id="hrGreetingText" rows="4" class="greeting-textarea" placeholder="AI 解析简历后将自动生成一段 200-300 字的精炼打招呼语（包含学历背景、实习高光、核心项目、重要竞赛/四六级高分、个人优势），可直接用于 BOSS直聘、智联招聘、牛客等与 HR 沟通..."></textarea>
+            <div class="greeting-meta-bar">
+              <span class="greeting-tip">💡 适用：BOSS直聘、智联直聊、牛客、前程无忧、猎聘打招呼开场白</span>
+              <span id="greetingCharCount" class="char-count">0 / 300 字</span>
+            </div>
+          </div>
+        </div>
+      <div id="attachmentPanel"></div>
+      </section>
+
+      <!-- 基础个人信息 -->
+      <section id="section-basic" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon user-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </div>
+            <div>
+              <h2 class="section-title">基础个人信息</h2>
+              <p class="section-subtitle">姓名、联系方式、政治面貌与身份户籍信息</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子区域 1: 核心身份与联系方式 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="basic">核心身份与联系方式</h4>
+            <span class="card-tag">网申必填</span>
+          </div>
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label>真实姓名 <span class="required">*</span></label>
+              <input type="text" id="fullName" placeholder="例如: 张三">
+            </div>
+            <div class="form-group">
+              <label for="englishName">英文名</label>
+              <input type="text" id="englishName" data-ext-key="englishName" data-primary-ext placeholder="例如 Alex Zhang">
+            </div>
+            <div class="form-group">
+              <label>手机号码 <span class="required">*</span></label>
+              <input type="tel" id="phone" placeholder="例如: 13800138000">
+            </div>
+            <div class="form-group">
+              <label>电子邮箱 <span class="required">*</span></label>
+              <input type="email" id="email" placeholder="example@email.com">
+            </div>
+            <div class="form-group">
+              <label for="wechat">微信号</label>
+              <input type="text" id="wechat" data-ext-key="wechat" data-primary-ext placeholder="">
+            </div>
+            <div class="form-group">
+              <label for="qq">QQ 号</label>
+              <input type="text" id="qq" data-ext-key="qq" data-primary-ext placeholder="">
+            </div>
+            <div class="form-group">
+              <label>性别</label>
+              <div class="select-box">
+                <select id="gender">
+                  <option value="">请选择</option>
+                  <option value="男">男</option>
+                  <option value="女">女</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row form-row-4 form-row-identity">
+            <div class="form-group">
+              <label>姓 (Last Name)</label>
+              <input type="text" id="lastName" placeholder="张">
+            </div>
+            <div class="form-group">
+              <label>名 (First Name)</label>
+              <input type="text" id="firstName" placeholder="三">
+            </div>
+            <div class="form-group form-group-birth">
+              <label>出生日期</label>
+              <input type="text" id="birthDate" value="">
+            </div>
+            <div class="form-group">
+              <label for="idCardType">证件类型</label>
+              <div class="select-box"><select id="idCardType" data-ext-key="idCardType" data-primary-ext><option value="">请选择</option><option value="身份证">身份证</option><option value="护照">护照</option><option value="港澳居民来往内地通行证">港澳居民来往内地通行证</option><option value="台湾居民来往大陆通行证">台湾居民来往大陆通行证</option><option value="其他">其他</option></select></div>
+            </div>
+            <div class="form-group">
+              <label for="idCard">证件号码</label>
+              <input type="text" id="idCard" placeholder="110101199901011234">
+            </div>
+          </div>
+        </div>
+
+        <!-- 子区域 2: 政治面貌与身份背景 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="declarations">政治面貌与身份背景</h4>
+            <span class="card-tag">国企/央企/银行/大厂高频</span>
+          </div>
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label>政治面貌</label>
+              <div class="select-box">
+                <select id="politicalStatus">
+                  <option value="">请选择</option>
+                  <option value="中共党员">中共党员</option>
+                  <option value="中共预备党员">中共预备党员</option>
+                  <option value="共青团员">共青团员</option>
+                  <option value="群众">群众</option>
+                  <option value="民主党派">民主党派</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>民族</label>
+              <input type="text" id="ethnicity" placeholder="如: 汉族">
+            </div>
+            <div class="form-group">
+              <label>籍贯</label>
+              <input type="text" id="hometown" placeholder="如: 山东青岛">
+            </div>
+            <div class="form-group" data-political-date="leagueJoinDate" hidden>
+              <label for="leagueJoinDate">入团时间</label>
+              <input type="text" id="leagueJoinDate" data-ext-key="leagueJoinDate" data-primary-ext placeholder="YYYY-MM 或 YYYY-MM-DD">
+            </div>
+            <div class="form-group" data-political-date="partyJoinDate" hidden>
+              <label for="partyJoinDate">入党时间</label>
+              <input type="text" id="partyJoinDate" data-ext-key="partyJoinDate" data-primary-ext placeholder="YYYY-MM 或 YYYY-MM-DD">
+            </div>
+            <div class="form-group">
+              <label>预计毕业年月</label>
+              <input type="text" id="graduationDate" placeholder="如: 2026-06">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>婚姻状况</label>
+              <div class="select-box">
+                <select id="maritalStatus">
+                  <option value="">请选择</option>
+                  <option value="未婚">未婚</option>
+                  <option value="已婚">已婚</option>
+                  <option value="离异">离异</option>
+                  <option value="丧偶">丧偶</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="sourcePlace">生源地</label>
+              <input type="text" id="sourcePlace" data-ext-key="sourcePlace" data-primary-ext placeholder="高考时的生源所在地">
+            </div>
+            <div class="form-group">
+              <label for="registeredAddress">户口所在地</label>
+              <input type="text" id="registeredAddress" data-ext-key="registeredAddress" data-primary-ext placeholder="例如 广东省深圳市罗湖区">
+            </div>
+            <div class="form-group">
+              <label for="registeredAddressType">户籍类型</label>
+              <input type="text" id="registeredAddressType" data-ext-key="registeredAddressType" data-primary-ext placeholder="">
+            </div>
+            <div class="form-group">
+              <label for="nationality">国籍</label>
+              <input type="text" id="nationality" data-ext-key="nationality" data-primary-ext placeholder="例如 中国">
+            </div>
+            <div class="form-group">
+              <label for="birthPlace">出生地</label>
+              <input type="text" id="birthPlace" data-ext-key="birthPlace" data-primary-ext placeholder="">
+            </div>
+            <div class="form-group">
+              <label>现居住城市</label>
+              <input type="text" id="currentCity" placeholder="如: 上海市浦东新区">
+            </div>
+          </div>
+        </div>
+
+        <!-- 子区域 3: 紧急联系人 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="family">紧急联系人</h4>
+            <span class="card-tag">校招背调常用</span>
+          </div>
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label>紧急联系人姓名</label>
+              <input type="text" id="emergencyContact" placeholder="例如: 张某某">
+            </div>
+            <div class="form-group">
+              <label>与本人关系</label>
+              <input type="text" id="emergencyRelation" placeholder="例如: 父亲 / 母亲">
+            </div>
+            <div class="form-group">
+              <label>紧急联系人电话</label>
+              <input type="tel" id="emergencyPhone" placeholder="例如: 13900139000">
+            </div>
+          </div>
+        </div>
+
+        <!-- 子区域 4: 居住地与通信地址 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="address">居住地与通信地址</h4>
+            <span class="card-tag">国内/海外</span>
+          </div>
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label>省份 / 直辖市</label>
+              <input type="text" id="state" placeholder="北京市">
+            </div>
+            <div class="form-group">
+              <label>城市</label>
+              <input type="text" id="city" placeholder="海淀区">
+            </div>
+            <div class="form-group">
+              <label>国家 / 地区</label>
+              <input type="text" id="country" placeholder="中国">
+            </div>
+            <div class="form-group">
+              <label>邮政编码</label>
+              <input type="text" id="zipCode" placeholder="100080">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>详细街道地址</label>
+            <input type="text" id="street" placeholder="例如: 中关村南大街 1 号院">
+          </div>
+          <div class="form-group">
+            <label for="homeAddress">家庭现居地址</label>
+            <input type="text" id="homeAddress" autocomplete="off" placeholder="例如 广东省深圳市南山区科技路 1 号">
+          </div>
+        </div>
+
+        <!-- 子区域 5: 社交与作品集主页 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="language">社交主页与个人作品集</h4>
+            <span class="card-tag">加分项</span>
+          </div>
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label>LinkedIn 主页</label>
+              <input type="url" id="linkedin" placeholder="https://linkedin.com/in/username">
+            </div>
+            <div class="form-group">
+              <label>GitHub 主页</label>
+              <input type="url" id="github" placeholder="https://github.com/username">
+            </div>
+            <div class="form-group">
+              <label>个人作品集 / 博客</label>
+              <input type="url" id="website" placeholder="https://yourdomain.com">
+            </div>
+            <div class="form-group">
+              <label>Twitter / X 主页</label>
+              <input type="url" id="twitter" placeholder="https://x.com/username">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 求职意向 -->
+      <section id="section-intention" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon intention-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="6"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">求职意向</h2>
+              <p class="section-subtitle">目标岗位、城市、薪资和到岗安排</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子区域 1: 求职投递意向 -->
+        <div class="sub-card">
+          <div class="sub-card-header">
+            <h4 data-heading-icon="intention">求职投递意向</h4>
+            <span class="card-tag">目标匹配</span>
+          </div>
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label>期望工作城市</label>
+              <input type="text" id="expectedCity" placeholder="例如: 北京, 上海, 深圳, 杭州 (支持多选逗号分隔)">
+            </div>
+            <div class="form-group">
+              <label>期望目标职位</label>
+              <input type="text" id="expectedPosition" placeholder="例如: 前端开发工程师 / 全栈工程师">
+            </div>
+            <div class="form-group">
+              <label>期望行业</label>
+              <input type="text" id="expectedIndustry" placeholder="例如: 互联网 / 金融 / 智能制造">
+            </div>
+            <div class="form-group">
+              <label for="salaryPeriod">薪资周期</label>
+              <div class="select-box"><select id="salaryPeriod" data-ext-key="salaryPeriod" data-primary-ext><option value="">请选择</option><option value="月薪">月薪</option><option value="年薪">年薪</option></select></div>
+            </div>
+            <div class="form-group">
+              <label>期望月薪 / 年薪</label>
+              <input type="text" id="expectedSalary" placeholder="例如: 18k-25k 或 面议">
+            </div>
+          </div>
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label>最快到岗时间</label>
+              <input type="text" id="availableDate" placeholder="例如: 随时到岗 / 毕业后即刻到岗 / 2周内">
+            </div>
+            <div class="form-group">
+              <label for="acceptAdjustment">是否服从调剂</label>
+              <div class="select-box"><select id="acceptAdjustment" data-ext-key="acceptAdjustment" data-primary-ext><option value="">请选择</option><option value="是">是</option><option value="否">否</option></select></div>
+            </div>
+            <div class="form-group">
+              <label>出差 / 驻外意愿</label>
+              <div class="select-box">
+                <select id="willingToTravel">
+                  <option value="">请选择</option>
+                  <option value="愿意">愿意</option>
+                  <option value="不愿意">不愿意</option>
+                  <option value="视情况而定">视情况而定</option>
+                </select>
+                <svg class="field-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <details class="ext-collapse optional-job-fields">
+          <summary class="ext-collapse-toggle">内推、渠道与薪资补充</summary>
+          <div class="ext-collapse-body">
+            <div class="form-row form-row-3">
+            <div class="form-group">
+              <label>当前薪资（选填）</label>
+              <input type="text" id="currentSalary" placeholder="例如: 15k/月 或 20万/年">
+            </div>
+            <div class="form-group">
+              <label>常用内推码 / 推荐人</label>
+              <input type="text" id="referralCode" placeholder="例如: NTAXXX 或 张某某">
+            </div>
+            <div class="form-group">
+              <label>招聘信息来源</label>
+              <input type="text" id="recruitSource" placeholder="例如: 校招官网 / 内推 / 牛客网">
+            </div>
+            </div>
+            <div data-job-supplement></div>
+          </div>
+        </details>
+      </section>
+
+      <!-- 家庭成员 -->
+      <section id="section-family" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div>
+              <h2 class="section-title">家庭成员</h2>
+              <p class="section-subtitle">华为、银行及国企网申常见字段；请按实际要求填写</p>
+            </div>
+          </div>
+          <button id="addFamilyBtn" class="btn-add-item" type="button">
+            <span>添加家庭成员</span>
+          </button>
+        </div>
+        <div id="familyList" class="item-list"></div>
+      </section>
+
+      <!-- 荣誉奖励与竞赛经历 (新增独立动态列表) -->
+      <section id="section-awards" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon award-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                <path d="M4 22h16"></path>
+                <path d="M10 14.66V17c0 .55-.45 1-1 1H8c-.55 0-1 .45-1 1v3h10v-3c0-.55-.45-1-1-1h-1c-.55 0-1-.45-1-1v-2.34"></path>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">荣誉奖励与竞赛奖项</h2>
+              <p class="section-subtitle">国家级/省部级/校级奖学金、科技竞赛获奖荣誉</p>
+            </div>
+          </div>
+          <button id="addAwardBtn" class="btn-add-item">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>添加荣誉奖项</span>
+          </button>
+        </div>
+        <div id="awardsList" class="item-list"></div>
+      </section>
+
+      <!-- 资格证书 -->
+      <section id="section-certificates" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M8 9h8M8 13h6"></path></svg>
+            </div>
+            <div>
+              <h2 class="section-title">资格证书</h2>
+              <p class="section-subtitle">证书名称、编号、颁发机构及有效期</p>
+            </div>
+          </div>
+          <button id="addCertificateBtn" class="btn-add-item" type="button">
+            <span>添加证书</span>
+          </button>
+        </div>
+        <div id="certificatesList" class="item-list"></div>
+      </section>
+
+      <!-- 教育经历 (全面增强) -->
+      <section id="section-education" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon edu-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">教育经历</h2>
+              <p class="section-subtitle">高校全称、学院、统招培养方式、GPA、专业排名及主修课程</p>
+            </div>
+          </div>
+          <button id="addEducationBtn" class="btn-add-item">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>添加教育经历</span>
+          </button>
+        </div>
+        <div id="educationList" class="item-list"></div>
+      </section>
+
+      <!-- 工作 / 实习经历 (全面增强) -->
+      <section id="section-work" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon work-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">工作 / 实习经历</h2>
+              <p class="section-subtitle">公司全称、所属部门、工作性质、城市、STAR工作职责与量化业务成果</p>
+            </div>
+          </div>
+          <button id="addWorkBtn" class="btn-add-item">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>添加工作/实习</span>
+          </button>
+        </div>
+        <div id="workList" class="item-list"></div>
+      </section>
+
+      <!-- 项目经历 (全面增强) -->
+      <section id="section-projects" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon proj-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+                <line x1="14" y1="4" x2="10" y2="20"></line>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">项目经历</h2>
+              <p class="section-subtitle">项目起止时间、技术栈、项目类型、在线链接、职责难点与核心成果</p>
+            </div>
+          </div>
+          <button id="addProjectBtn" class="btn-add-item">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>添加项目经历</span>
+          </button>
+        </div>
+        <div id="projectList" class="item-list"></div>
+      </section>
+
+      <!-- 技能与求职简历附件 -->
+      <section id="section-skills" class="section glass">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="section-icon skill-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path>
+                <path d="M9 18h6"></path>
+                <path d="M10 22h4"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="section-title">技能特长与自我介绍</h2>
+              <p class="section-subtitle">专业标签、个性化自我介绍与简历附件</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>技能标签 <span class="label-tip">（输入技能后按回车 Enter 自动添加标签）</span></label>
+          <input type="text" id="skillInput" placeholder="例如: React, TypeScript, Go, 算法优化 (输入后按回车)" class="skill-input">
+          <div id="skillsList" class="tags-list"></div>
+        </div>
+
+        <div class="form-group">
+          <div class="label-row">
+            <label>自我评价 / 个人介绍</label>
+            <div class="template-buttons">
+              <button type="button" class="btn-template" data-template="tech">💻 技术研发模板</button>
+              <button type="button" class="btn-template" data-template="product">📊 产品经理模板</button>
+              <button type="button" class="btn-template" data-template="ops">🚀 运营与市场模板</button>
+            </div>
+          </div>
+          <textarea id="introduction" rows="4" placeholder="简短凝练的自我评价，常用于招聘网站的自我介绍字段..."></textarea>
+        </div>
+      </section>
+
+      <!-- 底部操作按钮区 -->
+      <section id="section-actions" class="section actions-section glass">
+        <div class="actions-container">
+          <button id="deleteProfileBtn" class="btn-danger-glass">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>删除当前资料</span>
+          </button>
+          <button id="saveBtn2" class="btn-primary-large">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            <span>保存全部资料设置</span>
+          </button>
+        </div>
+      </section>
+      </div>
+      </div>
+
+      <!-- 右栏：当前简历卡片 + 资料切换 / 新增 / 重命名 / 保存 / 导入 / 导出 -->
+      <aside class="profile-rail" id="profileRail" aria-label="当前简历与全局操作">
+        <div class="rail-card rail-profile-card">
+          <p class="rail-card-label">当前简历</p>
+          <p class="rail-profile-name" id="railProfileName">默认资料</p>
+          <p class="rail-profile-meta" id="railProfileMeta"></p>
+        </div>
+
+        <div class="nav-profile-group" id="navProfileGroup">
+          <span class="rail-group-label">全部简历</span>
+          <div class="nav-custom-dropdown is-static-list" id="navProfileDropdown">
+            <button type="button" class="nav-dropdown-trigger" id="navProfileDropdownBtn" title="当前简历（下方列表可切换）">
+              <span class="nav-profile-badge">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3.5"/><circle cx="9" cy="11" r="2.5"/><path d="M15 9h3M15 13h3M5.5 16.5c0-1.6 1.6-2.5 3.5-2.5s3.5.9 3.5 2.5"/></svg>
+              </span>
+              <span class="nav-profile-name" id="navSelectedProfileName">默认资料</span>
+              <svg class="nav-dropdown-arrow" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <!-- 简历列表（右栏内常驻可见，数量多时滚动；ID 与事件保持不变） -->
+            <div class="nav-dropdown-menu" id="navProfileDropdownMenu">
+              <!-- 动态生成资料列表 -->
+            </div>
+
+            <!-- 隐式原生 select 用于底层逻辑兼容 -->
+            <select id="profileSelect" style="display: none;"></select>
+          </div>
+
+          <button id="renameProfileBtn" class="btn-nav-sub" title="重命名当前资料档案">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            <span>重命名</span>
+          </button>
+          <button id="addProfileBtn" class="btn-nav-sub" title="新增资料档案">
+            <svg viewBox="0 0 24 24" width="12.5" height="12.5" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>新增资料</span>
+          </button>
+        </div>
+
+        <div class="nav-profile-actions" id="navProfileActions">
+          <button id="saveBtn" class="btn-nav-primary">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            <span>保存修改</span>
+          </button>
+          <div class="rail-data-actions">
+            <button type="button" id="exportBackupBtn" class="btn-nav-sub">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>导出资料</span>
+            </button>
+            <button type="button" id="importBackupBtn" class="btn-nav-sub">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>导入资料</span>
+            </button>
+          </div>
+          <input type="file" id="importBackupFile" accept="application/json,.json" hidden>
+        </div>
+      </aside>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast" style="display: none;"></div>
+
+  <script src="../scripts/profile-create-dialog.js"></script>
+  <script src="../scripts/profile-schema.js"></script>
+  <script src="../scripts/profile-completeness.js"></script>
+  <script src="../scripts/resume-parser.js"></script>
+  <script src="options.js"></script>
+  <script src="date-controls.js"></script>
+  <script src="tracker.js"></script>
+  <script src="app-shell.js"></script>
+  <script src="product-demo.js"></script>
+</body>
+</html>
