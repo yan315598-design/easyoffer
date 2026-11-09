@@ -275,7 +275,7 @@ function slimResumeContext(profile) {
     major: profile.education?.[0]?.major,
     degree: profile.education?.[0]?.degree,
     skills: profile.skills?.skills || profile.skills,
-    advantage: profile.skills?.advantage,
+    advantage: profile.skillAdvantage || profile.skills?.advantage,
     intro: profile.introTemplates?.default || profile.skills?.intro,
     projects: (profile.projects || []).slice(0, 3).map((p) => ({
       name: p.name,
@@ -363,6 +363,8 @@ function collectSmartFillFields() {
     const nameOrdinal = nameOrdinals.get(nameKey) || 0;
     nameOrdinals.set(nameKey, nameOrdinal + 1);
 
+    // 多益表格需要按行对齐，已识别的 Tec 下拉也只使用确定来源。
+    if (duoyiTableField(el) || (el.matches('.tec-select__input, .tec-cascade__input') && matchFieldType(el))) return;
     if (fieldHasValue(el)) return;
     if (isOpenQuestionField(el)) return;
 

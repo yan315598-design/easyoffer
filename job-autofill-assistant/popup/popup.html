@@ -151,6 +151,7 @@
           <span class="btn-text">增量填入</span>
         </button>
       </div>
+      <label class="sidebar-add-rows"><input id="incrementalAddRows" type="checkbox"> 增量填入时也补建条目</label>
       </fieldset>
 
       <button id="settingsBtn" class="btn btn-secondary btn-block" title="打开我的简历">
@@ -198,9 +199,18 @@
         <button type="button" data-quick="exp" aria-pressed="false">经历与实战</button>
         <button type="button" data-quick="qa" aria-pressed="false">问答与自述</button>
       </div>
+      <div class="sidebar-quick-tools">
+        <label><input id="quickAll" type="checkbox"> 显示停用模块资料</label>
+        <span>停用资料可复制</span>
+      </div>
       <p id="quickNotice" class="sidebar-notice" role="status"></p>
       <div id="quickResults" class="sidebar-quick-results"></div>
     </section>
+    <dialog id="quickEntryPreview" class="sidebar-preview" aria-labelledby="quickEntryHeading">
+      <h2 id="quickEntryHeading">预览整条填入</h2>
+      <p></p><ul></ul>
+      <form method="dialog"><button value="cancel">取消</button><button value="write">确认填入</button></form>
+    </dialog>
 
     <footer class="footer-bar">
       <button type="button" id="highlightBtn" class="btn btn-soft">字段高亮</button>

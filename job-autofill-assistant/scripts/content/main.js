@@ -27,10 +27,74 @@ function publishSidePanel(message) {
 function publishSidePanelTarget() {
   if (!contentMainState.sidePanelPorts?.size) return;
   const selected = getFillTarget();
+  const context = sidePanelRow(selected);
   const target = selected?.el.isConnected && selected.url === location.href
-    ? { id: selected.id, label: selected.label, kind: selected.kindName }
+    ? { id: selected.id, label: selected.label, kind: selected.kindName, section: context?.module.section,
+        key: context?.row.fields.find(field => field.input === selected.el)?.key, row: context?.label }
     : null;
   publishSidePanel({ kind: 'target', target });
+}
+
+function sidePanelRow(target) {
+  if (!target?.el?.isConnected || target.url !== location.href || typeof repeatModules !== 'function') return null;
+  for (const module of repeatModules()) {
+    if (!module.root.contains(target.el)) continue;
+    const { rows } = repeatRows(module);
+    const row = rows.find(row => row.root.contains(target.el));
+    if (row) return { module, row, label: `${module.label || '当前模块'} · 第 ${rows.indexOf(row) + 1} 条` };
+  }
+  return null;
+}
+
+function previewSidePanelRow(request, target) {
+  contentMainState.rowPreview = null;
+  const context = sidePanelRow(target);
+  const entry = request.entry;
+  if (!context || context.module.section !== request.section || !entry || typeof entry !== 'object' ||
+      !repeatProfileEntries(context.module, { [request.section]: [entry] }).length) return { error: '请在网页选中同类条目中的一个字段。' };
+  const identity = context.row.fields.filter(field => context.module.identity.includes(field.key) && fieldHasValue(field.input));
+  if (identity.some(field => {
+    const existing = repeatControlValue(field.input);
+    const expected = repeatFieldValue(entry, field.key);
+    return existing && !optionTextEquals(existing, expected);
+  })) return { error: '这条网页记录已有不同的身份信息，请先核对或选一条空记录。' };
+  const fields = context.row.fields.flatMap(({ input, detection, key }) => {
+    const value = repeatFieldValue(entry, key);
+    if (!key || detection.confidence < FIELD_WRITE_MIN_CONFIDENCE || !['string', 'number'].includes(typeof value) ||
+        !String(value).trim() || !resolveFillTarget(input)) return [];
+    return [{ input, key, value, label: fillTargetLabelOf(input), keep: fieldHasValue(input) }];
+  });
+  if (!fields.some(field => !field.keep)) return { error: '该条目没有可填的空白字段。' };
+  const token = globalThis.crypto.randomUUID();
+  contentMainState.rowPreview = { token, targetId: target.id, root: context.row.root, module: context.module, fields };
+  return { token, row: context.label, fields: fields.map(({ label, value, keep }) => ({ label, value, keep })) };
+}
+
+async function applySidePanelRow(request, target) {
+  const preview = contentMainState.rowPreview;
+  contentMainState.rowPreview = null;
+  if (!preview || preview.token !== request.token || preview.targetId !== target.id) return { error: '预览已失效，请重新选择目标。' };
+  const { root, module, fields } = preview;
+  const task = startActiveFillTask('quick-entry', 'incremental');
+  if (!task) return { error: '请等当前填写任务结束。' };
+  const signal = task.controller.signal;
+  let filled = 0;
+  let pending = 0;
+  try {
+    for (const field of fields) {
+      if (field.keep) continue;
+      await waitForFillCheckpoint(task);
+      if (signal.aborted || request.url !== location.href || !root.isConnected ||
+          !root.contains(field.input) || !resolveFillTarget(field.input) || fieldHasValue(field.input) ||
+          repeatFieldKey(module.section, detectField(field.input)?.fieldType) !== field.key ||
+          fillTargetLabelDrifted(field.label, fillTargetLabelOf(field.input))) { pending++; continue; }
+      if (await fillField(field.input, field.value, { signal, task })) filled++;
+      else pending++;
+    }
+    return { filled, pending };
+  } finally {
+    finishActiveFillTask(task);
+  }
 }
 
 function publishSidePanelTask() {
@@ -90,6 +154,20 @@ function bindContentMessageListener() {
       });
       return true;
     }
+    if (request.action === 'sidePanelPreviewEntry' || request.action === 'sidePanelApplyEntry') {
+      const target = getFillTarget();
+      if (request.url !== location.href || !target?.el?.isConnected || target.url !== request.url ||
+          target.id !== request.targetId || activeFillTask?.running) {
+        sendResponse({ error: '网页目标已变化或正在填写，请重新选择。' });
+        return false;
+      }
+      if (request.action === 'sidePanelPreviewEntry') {
+        sendResponse(previewSidePanelRow(request, target));
+        return false;
+      }
+      applySidePanelRow(request, target).then(sendResponse).catch(() => sendResponse({ error: '填写中断，请核对已写入的字段。' }));
+      return true;
+    }
     if (request.action === 'pauseFill') {
       sendResponse({ success: toggleActiveFillPause(), paused: Boolean(activeFillTask?.paused) });
       return false;
@@ -101,7 +179,7 @@ function bindContentMessageListener() {
     }
     if (request.action === 'fillForm') {
       if (!request.sidePanel && typeof yanyuSetDockVisible === 'function') yanyuSetDockVisible(true, true);
-      fillForm(request.profile, { mode: request.mode === 'incremental' ? 'incremental' : 'full' }).then(result => {
+      fillForm(request.profile, { mode: request.mode === 'incremental' ? 'incremental' : 'full', completeRows: request.completeRows === true }).then(result => {
         // 引擎的软失败（如"已有填充任务正在进行"）带 error 字段：如实返回 success:false
         if (result && result.error) {
           sendResponse({ success: false, error: result.error, cancelled: !!result.cancelled, result });

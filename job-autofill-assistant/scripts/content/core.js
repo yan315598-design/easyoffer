@@ -245,31 +245,38 @@ function getClosestLabelText(input) {
     if (isMokaForm() && mokaField) {
       return cleanLabel(mokaField.querySelector('[class^="title-"]')?.textContent);
     }
+    const tableField = duoyiTableField(input);
+    if (tableField) return tableField.label;
+    const tecLabel = input.closest('.tec-form-item')?.querySelector('.tec-form-item__label');
+    const tecQuestion = cleanLabel(tecLabel?.textContent).replace(/[:：]$/, '').trim();
+    if (tecQuestion) return tecQuestion;
     const labelledBy = (input.getAttribute('aria-labelledby') || '').split(/\s+/)
       .map((id) => document.getElementById(id)?.textContent || '').join(' ');
     const accessibleLabel = cleanLabel(labelledBy) || cleanLabel(input.getAttribute('aria-label'));
     if (accessibleLabel) return accessibleLabel;
-    if (input.id) {
-      const label = input.labels?.[0] || document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
-      const cleaned = cleanLabel(label && label.textContent);
-      if (cleaned) return cleaned;
+    const antItem = input.closest('.ant-form-item');
+    if (input.type === 'radio' && input.closest('.ant-radio-group')) {
+      const question = cleanLabel(antItem?.querySelector('.ant-form-item-label')?.textContent);
+      if (question) return question;
     }
-
-    const parentLabel = input.closest('label');
-    if (parentLabel) {
-      const clone = parentLabel.cloneNode(true);
+    const label = input.labels?.[0] || input.closest('label') ||
+      (input.id ? document.querySelector(`label[for="${CSS.escape(input.id)}"]`) : null);
+    if (label) {
+      const clone = label.cloneNode(true);
       clone.querySelectorAll('input, textarea, select, button').forEach((n) => n.remove());
       const cleaned = cleanLabel(clone.textContent);
       if (cleaned) return cleaned;
     }
 
-    const item = input.closest(
-      '.ant-form-item, .el-form-item, .semi-form-field, .arco-form-item, [class*="form-item"], [class*="FormItem"], [class*="formItem"], [class*="form-field"], [class*="field-item"], [class*="apply-item"]'
-    );
+    const item = antItem || input.closest('.el-form-item, .semi-form-field, .arco-form-item') ||
+      input.closest('[class*="form-item"], [class*="FormItem"], [class*="formItem"], [class*="form-field"], [class*="field-item"], [class*="apply-item"]');
     if (item) {
       const titleEl = item.querySelector('.ant-form-item-label, .el-form-item__label, label, [class*="form-item-label"], [class*="field-label"], [class*="form-label"]');
       const cleaned = cleanLabel(titleEl && titleEl.textContent);
-      if (cleaned) return cleaned;
+      // An input group can contain a country-code or document-type selector next to the labelled text input.
+      const related = titleEl?.querySelector('label[for]') || (titleEl?.matches('label[for]') ? titleEl : null);
+      const linked = related?.htmlFor ? document.getElementById(related.htmlFor) : null;
+      if (cleaned && !(linked && linked !== input && input.closest('.ant-input-group-addon'))) return cleaned;
       const first = item.firstElementChild;
       const firstText = cleanLabel(first && first.textContent);
       if (firstText && first !== input && !first.contains(input)) return firstText;
@@ -780,6 +787,7 @@ function isIgnoredInput(element, features) {
   if (element.closest('#job-autofill-dock, #job-autofill-copy-panel, #job-autofill-ai-panel, #job-autofill-log-panel, #job-autofill-region-overlay, #job-autofill-region-panel')) {
     return true;
   }
+  if (element.closest('.el-cascader__dropdown, .tec-cascade__popper, .tec-select__popper')) return true;
 
   const type = (element.type || '').toLowerCase();
   if (type === 'password' || type === 'hidden') return true;
@@ -874,7 +882,7 @@ function exactQuestion(text) {
 }
 
 function questionContainer(input) {
-  return input.closest('.form-item--phoenix, .ant-form-item, [class*="apply-field-"], fieldset, .form-group') || input.parentElement;
+  return input.closest('.form-item--phoenix, .ant-form-item, .tec-form-item, [class*="apply-field-"], fieldset, .form-group') || input.parentElement;
 }
 
 // ========================================================================
@@ -902,7 +910,9 @@ function isElementTrulyVisible(el) {
 }
 
 function fieldHasValue(el) {
-  if (el.type === 'radio' || el.type === 'checkbox') return !!questionContainer(el).querySelector('input:checked, [aria-checked="true"], .phoenix-radio--checked, .ant-radio-wrapper-checked');
+  if (el.type === 'radio') return radioGroup(el).some(radio => radio.checked);
+  if (el.type === 'checkbox') return !!questionContainer(el).querySelector('input:checked, [aria-checked="true"], .phoenix-radio--checked, .ant-radio-wrapper-checked');
+  if (el.matches('.tec-select__input, .tec-cascade__input')) return !!tecSelectedLabel(el);
   const phoenix = el.closest('.phoenix-select');
   if (phoenix) return !!phoenix.querySelector('.phoenix-select__tipEle')?.textContent.trim();
   if (el.isContentEditable) return !!(el.textContent || '').trim();
@@ -912,15 +922,8 @@ function fieldHasValue(el) {
     const option = el.options[el.selectedIndex];
     return !!option && !!el.value && !/^(请选择.*|请选择|please\s+select.*|select(?:\s.*)?|年|月|日|[-—]+)$/i.test(option.text.trim());
   }
-  if (el.closest('.el-select')) return !!widgetSelectCurrentValue(el);
-  if ((el.value || '').trim()) return true;
-  const wrap = el.closest('.ant-select, .rc-select');
-  if (wrap) {
-    const item = wrap.querySelector('.ant-select-selection-item, .el-select__selected-item, .rc-select-selection-item');
-    const text = (item && item.textContent.trim()) || '';
-    if (text && !/^(请选择|年|月|日)$/.test(text)) return true;
-  }
-  return false;
+  if (el.closest('.el-select, .ant-select, .rc-select')) return !!widgetSelectCurrentValue(el);
+  return Boolean((el.value || '').trim());
 }
 
 function runtimeSend(payload, timeoutMs) {

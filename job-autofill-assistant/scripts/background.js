@@ -4,7 +4,7 @@
 // ============================================================================
 
 // 导入storage manager（在service worker中需要用importScripts）
-importScripts('profile-schema.js', 'attachments.js', 'storage.js', 'resume-parser.js', 'content-ready.js');
+importScripts('profile-schema.js', 'attachments.js', 'storage.js', 'resume-parser.js', 'content-ready.js', 'backup-directory.js');
 
 console.log('[易offer] Background Service Worker 已启动');
 
@@ -207,6 +207,32 @@ function clearActionFailure(tabId) {
 
 // 数据操作串行执行；导出/导入先等待编辑页保存，避免与队列互相等待。
 let dataMessageQueue = Promise.resolve();
+let snapshotTimer;
+let snapshotRevision = 0;
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || (!changes.jobAutofillData && !changes.yanyuSubmissionsV1)) return;
+  snapshotRevision++;
+  clearTimeout(snapshotTimer);
+  snapshotTimer = setTimeout(() => void queueDataMessage({ action: 'writeSnapshot', automatic: true }).catch(console.warn), 1800);
+});
+
+async function writeBackupSnapshot(automatic) {
+  const revision = snapshotRevision;
+  const previous = (await chrome.storage.local.get('easyofferBackupStatus')).easyofferBackupStatus || {};
+  const handle = await backupDirectory.get();
+  if (!handle && automatic) return { success: true };
+  try {
+    if (!handle || await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('请重新选择备份目录并授权');
+    const data = await storageManager.exportData();
+    const filename = await backupDirectory.write(handle, data);
+    await chrome.storage.local.set({ easyofferBackupStatus: { filename, directory: handle.name, completedAt: new Date().toISOString(), dirty: revision !== snapshotRevision } });
+    return { success: true, filename };
+  } catch (error) {
+    await chrome.storage.local.set({ easyofferBackupStatus: { ...previous, dirty: true, error: error.message } });
+    return { success: false, error: error.message };
+  }
+}
+
 function queueDataMessage(request, sender) {
   dataMessageQueue = dataMessageQueue.catch(() => {}).then(() => storageReady).then(() => new Promise(resolve => {
     dispatchMessage(request, sender, resolve);
@@ -238,7 +264,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (['flushProfileEditor', 'finishProfileImport'].includes(request.action)) return false;
   if (request.action === 'getEditorIdentity') { sendResponse({ documentId: sender.documentId }); return false; }
   if (['aiGenerate', 'parseResume'].includes(request.action)) return dispatchMessage(request, sender, sendResponse);
-  const needsSavedEditor = ['exportData', 'importData'].includes(request.action) ||
+  const needsSavedEditor = ['exportData', 'importData', 'writeSnapshot'].includes(request.action) ||
     (request.action === 'addProfile' && !!request.sourceProfileId);
   const result = needsSavedEditor ? handleDataAfterEditorSave(request, sender) : queueDataMessage(request, sender);
   result.then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
@@ -314,11 +340,20 @@ function dispatchMessage(request, sender, sendResponse) {
       return true;
 
     case 'exportData':
-      handleExportData(sendResponse);
+      handleExportData(sendResponse, request.options);
+      return true;
+
+    case 'previewBackup':
+      storageManager.previewBackup(request.data).then(preview => sendResponse({ success: true, preview }),
+        error => sendResponse({ success: false, error: error.message }));
+      return true;
+
+    case 'writeSnapshot':
+      writeBackupSnapshot(request.automatic).then(sendResponse, error => sendResponse({ success: false, error: error.message }));
       return true;
 
     case 'importData':
-      handleImportData(request.data, sendResponse);
+      handleImportData(request.data, sendResponse, request.options);
       return true;
 
     case 'parseResume':
@@ -511,19 +546,19 @@ async function handleDeleteProject(profileId, projectId, sendResponse) {
   }
 }
 
-async function handleExportData(sendResponse) {
+async function handleExportData(sendResponse, options) {
   try {
-    const data = await storageManager.exportData();
+    const data = await storageManager.exportData(options);
     sendResponse({ success: true, data });
   } catch (e) {
     sendResponse({ success: false, error: e.message });
   }
 }
 
-async function handleImportData(data, sendResponse) {
+async function handleImportData(data, sendResponse, options) {
   try {
-    await storageManager.importData(data);
-    sendResponse({ success: true });
+    const result = await storageManager.importData(data, options);
+    sendResponse({ success: true, ...result });
   } catch (e) {
     sendResponse({ success: false, error: e.message });
   }

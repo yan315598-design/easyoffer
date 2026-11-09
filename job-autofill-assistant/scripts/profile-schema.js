@@ -9,7 +9,7 @@ var profileSchema = {
     relativesEmployed: '亲属在目标单位任职', yearsOfWork: '工作年限', lastNamePinyin: '姓拼音', firstNamePinyin: '名拼音',
     namePinyinFull: '姓名全拼', personalPromise: '个人声明/承诺',
     archiveOrganization: '人事档案所在单位', professionalTitle: '专业技术职称', homeAddress: '家庭现居地址',
-    birthPlace: '出生地', interests: '兴趣爱好'
+    birthPlace: '出生地', childhoodCity: '童年时所在城市', interests: '兴趣爱好', specialSkillProficiency: '首项技能熟练程度'
   },
   jobIntention: {
     expectedIndustry: '期望行业', currentSalary: '当前薪资', acceptAdjustment: '是否服从调剂',
@@ -45,7 +45,7 @@ var profileSchema = {
     proficiency: '掌握程度', listeningSpeaking: '听说能力', readingWriting: '读写能力',
     level: '证书等级', notes: '补充说明'
   },
-  familyMembers: { birthDate: '出生日期', politicalStatus: '政治面貌', homeAddress: '家庭所在地' },
+  familyMembers: { birthDate: '出生日期', age: '年龄', occupation: '职业', politicalStatus: '政治面貌', homeAddress: '家庭所在地' },
   campusPositions: {
     organization: '组织/社团名称', title: '职务名称', level: '学生干部级别', startDate: '开始时间',
     endDate: '结束时间', description: '职务描述', activityName: '项目/活动名称'
@@ -195,6 +195,22 @@ function profileWithoutFiles(profile) {
   return JSON.parse(JSON.stringify(profile, (key, value) => ['resumeFile', 'attachments', 'attachmentContents', 'dataUrl'].includes(key) ? undefined : value));
 }
 
+function profileSkillEntries(profile) {
+  const legacy = profile?.skills?.skills;
+  const source = Array.isArray(profile?.skills) ? profile.skills :
+    typeof legacy === 'string' ? legacy.split(/\r?\n/).map(item => item.trim()).filter(Boolean) : [];
+  return source.map((item, index) => {
+    if (typeof item === 'string') return { id: `skill-${index}`, name: item.trim(), proficiency: index === 0 ? profile.basicInfo?.specialSkillProficiency || '' : '' };
+    if (!item || typeof item !== 'object') return null;
+    return { ...item, id: item.id || `skill-${index}`, name: String(item.name || '').trim(), proficiency: String(item.proficiency || '').trim() };
+  }).filter(Boolean);
+}
+
+function profileSkillText(profile, separator = '、') {
+  return profileSkillEntries(profile).map(item => item.name).filter(Boolean).join(separator) ||
+    (typeof profile?.skills?.skills === 'string' ? profile.skills.skills : '') || profile?.basicInfo?.specialSkills || '';
+}
+
 // Module preferences retain source data; this projection is exclusively for filling.
 var resumeOptionalModules = ['internship','work','projects','campusPositions','campusActivities','family','awards','languageCertificates','certificates','skills','introduction','aiTools','trainings','papers','patents','openSource','commonAnswers','customAnswers','declarations'];
 var resumeModulesEnabledByContent = ['campusPositions', 'campusActivities', 'trainings', 'papers', 'patents', 'openSource', 'commonAnswers', 'customAnswers', 'declarations'];
@@ -222,6 +238,11 @@ function profileForFilling(profile) {
     if (key === 'work' || key === 'internship' || key === 'aiTools') continue;
     copy[dataKey] = ['introTemplates', 'commonAnswers'].includes(dataKey) ? {} : [];
     if (key === 'languageCertificates') copy.languageSkills = {};
+    if (key === 'skills' && copy.basicInfo) {
+      delete copy.basicInfo.specialSkills;
+      delete copy.basicInfo.specialSkillProficiency;
+      delete copy.skillAdvantage;
+    }
     if (key === 'introduction') { copy.hrGreeting = ''; copy.introduction = ''; }
   }
   copy.workExperience = (copy.workExperience || []).filter(item => resumeModuleEnabled(copy, isInternshipRecord(item) ? 'internship' : 'work'));

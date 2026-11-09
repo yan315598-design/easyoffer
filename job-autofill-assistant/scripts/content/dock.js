@@ -379,13 +379,12 @@ async function fillTargetWithCopyValue(text) {
   }
   lastFillTarget = { ...previous, ...recheck };
   try {
-    const written = recheck.kind === 'widget'
-      ? await fillSelectWidget(recheck.el, value)
-      : await fillField(recheck.el, value);
+    const written = await fillField(recheck.el, value, { forceWidget: recheck.kind === 'widget' });
     if (written) return { filled: true, label: recheck.label };
     const needsDate = /^\d{4}-\d{2}$/.test(value) &&
       /请确认(?:具体|完整)日期/.test(recheck.el.getAttribute('data-job-autofill-manual') || '');
-    return { filled: false, label: recheck.label, reason: needsDate ? 'needs-full-date' : 'write-fail' };
+    return { filled: false, label: recheck.label, reason: needsDate ? 'needs-full-date' :
+      recheck.el.getAttribute('data-easyoffer-write-reason') || 'write-fail' };
   } catch {
     return { filled: false, label: recheck.label, reason: 'write-error' };
   }

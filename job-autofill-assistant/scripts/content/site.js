@@ -6,6 +6,62 @@
 // ============================================================================
 
 'use strict';
+
+var DUOYI_FAMILY_COLUMNS = new Map([
+  ['姓名', 'familyName'], ['与自己关系', 'familyRelation'], ['年龄', 'familyAge'],
+  ['职业', 'familyOccupation'], ['职位', 'familyPosition'], ['工作单位', 'familyEmployer']
+]);
+var DUOYI_SKILL_COLUMNS = new Map([
+  ['个人特长', 'duoyiSkill'], ['熟练程度', 'duoyiSkillProficiency']
+]);
+
+function duoyiTableField(input) {
+  const cell = input.closest('td');
+  const row = cell?.parentElement;
+  if (!row?.matches('tr.main-list')) return null;
+  const labels = Array.from(cell.closest('table').rows[0].cells, cell => cleanLabel(cell.textContent));
+  const columns = [DUOYI_FAMILY_COLUMNS, DUOYI_SKILL_COLUMNS].find(columns =>
+    [...columns.keys()].every((label, index) => labels[index] === label));
+  const label = labels[cell.cellIndex];
+  const type = columns?.get(label);
+  return type ? { row, label, type } : null;
+}
+
+function familyRelationKey(value) {
+  const relation = String(value || '').trim();
+  if (/^(父|父亲|爸爸|父子|父女)$/.test(relation)) return '父亲';
+  if (/^(母|母亲|妈妈|母子|母女)$/.test(relation)) return '母亲';
+  return relation;
+}
+
+function collectDuoyiFamilyEntries(fields, entries) {
+  const rows = new Map();
+  const used = new Set();
+  for (const { input, detection } of fields) {
+    const field = duoyiTableField(input);
+    if (!field || !field.type.startsWith('family')) continue;
+    if (!rows.has(field.row)) rows.set(field.row, {});
+    const row = rows.get(field.row);
+    if (detection.fieldType === 'familyName') row.name = input.value.trim();
+    if (detection.fieldType === 'familyRelation') row.relation = familyRelationKey(widgetSelectCurrentValue(input));
+  }
+  for (const row of rows.values()) {
+    if (!row.name && !row.relation) continue;
+    const matches = entries.filter(entry =>
+      (!row.name || row.name === String(entry.name || '').trim()) &&
+      (!row.relation || row.relation === familyRelationKey(entry.relation)));
+    if (matches.length === 1 && !used.has(matches[0])) {
+      row.entry = matches[0];
+      used.add(row.entry);
+    }
+  }
+  const remaining = entries.filter(entry => !used.has(entry));
+  for (const row of rows.values()) {
+    if (!row.name && !row.relation) row.entry = remaining.shift();
+  }
+  return rows;
+}
+
 // 查找页面上的 HR 沟通/聊天输入框（如 BOSS直聘、智联、猎聘、牛客聊天框）
 function findChatInputElement() {
   const selectors = [
@@ -79,49 +135,90 @@ function generateDefaultGreeting(profile, positionName, companyName) {
 // ========================================================================
 
 function isXhsForm() {
-  return location.hostname === 'job.xiaohongshu.com' && !!document.querySelector('#form_item_name');
+  return !!document.querySelector('#form_item_name') && !!document.querySelector('#form_item_gender, #form_item_birthday, .ant-form-item .ant-select');
 }
 
-async function fillXhsControl(input, value, options) {
+async function fillAntCalendar(input, value, options = {}) {
   const picker = input.closest('.ant-picker');
   if (picker) {
-    if (!/^\d{4}-\d{2}(?:-\d{2})?$/.test(String(value))) return false;
-    document.activeElement?.blur();
-    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    document.body.click();
-    await sleep(150);
-    input.focus();
-    input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
-    input.click();
-    await sleep(150);
-    const popup = () => [...document.querySelectorAll('.ant-picker-dropdown')].find(el => isElementTrulyVisible(el) && !/hidden|leave/.test(el.className));
-    for (let attempt = 0; attempt < 10 && !popup(); attempt++) await sleep(50);
+    const parts = elementDateParts(value);
+    if (!parts?.[1]) return false;
+    const normalized = parts.filter(Boolean).map((part, index) => String(part).padStart(index ? 2 : 4, '0')).join('-');
+    if (!options.continueRange) {
+      document.activeElement?.blur();
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      input.focus();
+      input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      input.click();
+    }
+    const popup = () => {
+      const owned = input.getAttribute('aria-controls');
+      const panels = [...document.querySelectorAll('.ant-picker-dropdown')].filter(el => isElementTrulyVisible(el) && !/hidden|leave/.test(el.className));
+      return owned ? panels.find(panel => panel.id === owned || panel.contains(document.getElementById(owned))) : panels.length === 1 ? panels[0] : null;
+    };
+    await waitFor(popup, { timeoutMs: options.openTimeoutMs || 750, signal: options.signal, task: options.task, observe: document.body });
     const monthPanel = !!popup()?.querySelector('.ant-picker-month-panel');
-    const target = monthPanel ? String(value).slice(0, 7) : String(value);
+    const target = monthPanel ? normalized.slice(0, 7) : normalized;
+    if (!monthPanel && /^\d{4}-\d{2}$/.test(target)) markManual(input, '请确认具体日期');
     let picked = false;
     if (monthPanel || /^\d{4}-\d{2}-\d{2}$/.test(target)) {
       for (let step = 0; step < 120; step++) {
+        await waitForFillCheckpoint(options.task);
+        if (options.signal?.aborted) return false;
         const panel = popup();
         if (!panel) break;
-        const cell = [...panel.querySelectorAll('td[title]:not(.ant-picker-cell-disabled)')].find(el => el.title === target);
-        if (cell) { cell.querySelector('.ant-picker-cell-inner')?.click(); picked = true; break; }
-        const year = parseInt(panel.querySelector('.ant-picker-year-btn')?.textContent, 10);
-        const month = parseInt(panel.querySelector('.ant-picker-month-btn')?.textContent, 10);
+        const cells = [...panel.querySelectorAll('td[title]:not(.ant-picker-cell-disabled)')].filter(el => el.title === target);
+        const cell = cells.find(el => el.classList.contains('ant-picker-cell-in-view')) || cells[0];
+        if (cell && await clickFillControl(cell.querySelector('.ant-picker-cell-inner') || cell, options)) { picked = true; break; }
+        const calendarYear = () => parseInt(popup()?.querySelector('.ant-picker-year-btn')?.textContent, 10);
+        const calendarMonth = () => parseInt(popup()?.querySelector('.ant-picker-month-btn')?.textContent, 10);
+        const year = calendarYear();
+        const month = calendarMonth();
         if (!year) break;
         const targetYear = Number(target.slice(0, 4)), targetMonth = Number(target.slice(5, 7));
         const direction = year !== targetYear ? (targetYear < year ? 'super-prev' : 'super-next')
           : (!monthPanel && month ? (targetMonth < month ? 'prev' : 'next') : '');
         if (!direction) break;
-        panel.querySelector(`.ant-picker-header-${direction}-btn`)?.click();
-        await sleep(45);
+        const arrow = [...panel.querySelectorAll(`.ant-picker-header-${direction}-btn`)]
+          .find(button => !button.disabled && isElementTrulyVisible(button));
+        if (!await clickFillControl(arrow, options)) break;
+        const moved = await waitFor(() => calendarYear() !== year || Number.isFinite(month) && calendarMonth() !== month,
+          { timeoutMs: 180, signal: options.signal, task: options.task });
+        if (!moved) break;
       }
     }
+    if (picked && options.stageRange) return true;
     input.blur();
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    document.body.click();
-    await sleep(150);
-    return picked && input.value === target;
+    return picked && !!await waitFor(() => antDateCommitted(input, target),
+      { timeoutMs: 500, signal: options.signal, task: options.task });
   }
+  return false;
+}
+
+function antDateCommitted(input, value) {
+  const parts = elementDateParts(value);
+  if (!parts?.[1]) return false;
+  const normalized = parts.filter(Boolean).map((part, index) => String(part).padStart(index ? 2 : 4, '0')).join('-');
+  const shown = input.value.replace(/\//g, '-');
+  return input.isConnected && (shown === normalized || shown.length === 7 && shown === normalized.slice(0, 7));
+}
+
+async function fillAntDateRange(fields, values, options) {
+  if (fields.some(fieldHasValue) || !values.every(value => elementDateParts(value))) return false;
+  try {
+    const staged = await fillAntCalendar(fields[0], values[0], { ...options, stageRange: true });
+    if (!staged || !await fillAntCalendar(fields[1], values[1], { ...options, continueRange: true })) return false;
+    return fields.every((input, index) => antDateCommitted(input, values[index]) &&
+      !input.closest('.ant-form-item-has-error') && input.getAttribute('aria-invalid') !== 'true');
+  } finally {
+    fields.forEach(input => input.blur());
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  }
+}
+
+async function fillXhsControl(input, value, options) {
+  if (input.closest('.ant-picker')) return fillAntCalendar(input, value, options);
   const select = input.closest('.ant-select');
   if (!select || select.classList.contains('ant-select-auto-complete')) {
     const ok = setValue(input, value);
@@ -245,7 +342,7 @@ async function fillXhsForm(profile, options) {
 }
 
 function isBeisenForm() {
-  return /(^|\.)zhiye\.com$/.test(location.hostname) || !!document.querySelector('.ux-standard-form, form.form--phoenix, .form-item--phoenix');
+  return !!document.querySelector('.ux-standard-form, form.form--phoenix, .form-item--phoenix');
 }
 
 // 每个 ux-standard-form 是一段独立经历，不能用页面上同名字段的顺序推断归属。
@@ -341,7 +438,7 @@ async function fillBeisenForm(profile, options) {
         '开始时间': entry.startDate, '结束时间': entry.endDate},
       award: {'奖项名称': entry.name, '获奖级别': entry.level === '校级' ? '院校级' : entry.level, '获奖时间': entry.date, '颁奖单位': entry.issuer},
       family: {'称谓': entry.relation, '姓名': entry.name, '工作单位': entry.employer, '所属职务': entry.position},
-      skills: {'技能类别': Array.isArray(profile.skills) ? profile.skills.join(', ') : profile.skills?.skills},
+      skills: {'技能类别': profileSkillText(profile, ', ')},
       intro: {'自我评价及求职目标': [profile.commonAnswers?.selfEvaluation, profile.commonAnswers?.careerGoal].filter(Boolean).join('\n') || profile.introTemplates?.default}
     };
     for (const item of form.querySelectorAll('.form-item--phoenix')) {
@@ -405,7 +502,7 @@ async function fillBeisenForm(profile, options) {
 }
 
 function isMokaForm() {
-  return /(^|\.)mokahr\.com$/.test(location.hostname) || !!document.querySelector('[data-nav-id], .moka-form');
+  return !!document.querySelector('[data-nav-id^="block-"], .moka-form, [class*="sd-Select-container-"]');
 }
 
 // Moka 下拉：sd-Dropdown-container 与 sd-Select-container 是同一下拉组件的两种外壳
@@ -580,7 +677,7 @@ async function fillYearMonthWidgets(profile, options) {
 var  activeDeclarationQuestions = new Set();
 function isProtectedQuestion(label) {
   if (activeDeclarationQuestions.has(exactQuestion(label))) return true;
-  return /亲属.*(任职|退休|工作)|境外.*(身份|居留|就业|定居)|外国公民|香港.*台湾|国（境）外|国籍.*(其他|外国)|违法|违纪|犯罪|处分|失信|利益冲突|声明|承诺|签名|签字|本人确认|本人同意|真实性/.test(label);
+  return /亲属.*(任职|退休|工作)|亲友.*在公司就职|境外.*(身份|居留|就业|定居)|外国公民|香港.*台湾|国（境）外|国籍.*(其他|外国)|违法|违纪|犯罪|处分|失信|利益冲突|声明|承诺|签名|签字|本人确认|本人同意|真实性/.test(label);
 }
 
 function questionAnswered(root) {
@@ -628,7 +725,7 @@ async function fillConfirmedDeclarations(profile, options) {
   const currentHost = location.hostname.toLowerCase();
   const items = [], seen = new Set();
   for (const input of document.querySelectorAll('input,select,textarea')) {
-    if (input.disabled || !isElementTrulyVisible(input)) continue;
+    if (input.disabled || (!isElementTrulyVisible(input) && !isElementTrulyVisible(input.closest('label.tec-radio')))) continue;
     const root = questionContainer(input);
     if (seen.has(root)) continue;
     seen.add(root);
@@ -654,6 +751,8 @@ async function fillConfirmedDeclarations(profile, options) {
       if (choice) {
         choice.click(); await sleep(100);
         success = questionAnswered(root);
+      } else if (input.type === 'radio' && input.closest('.tec-radio-group')) {
+        success = await fillChoice(input, saved.answer);
       } else success = await fillSiteControl(input, saved.answer, options);
       if (!success || saved.explanation) markManual(input, `${saved.answer}${saved.explanation ? '；补充说明：' + saved.explanation : ''}`);
     } catch (err) {
@@ -755,7 +854,8 @@ var  EXTENDED_MAPPINGS = {
     '证书等级':'level', '证书描述':'description', '取得日期':'date', '有效期至':'expiryDate', '获得时间':'date'
   },
   languageCertificates: {
-    '外语种类':'language', '外语语种':'language', '语言/考试名称':'name', '语言考试名称':'name',
+    '语种':'language', '语言':'language', '外语种类':'language', '外语语种':'language', '语言/考试名称':'name', '语言考试名称':'name',
+    '听说能力':'listeningSpeaking', '读写能力':'readingWriting', '掌握程度':'proficiency', '熟练程度':'proficiency',
     '证书名称（技能名称）':'name', '证书名称(技能名称)':'name', '技能名称':'name', '证书名称':'name',
     '水平':'level', '等级/水平':'level', '语言水平':'level', '取得日期':'obtainedDate',
     '证书获取时间':'obtainedDate', '获得时间':'obtainedDate'

@@ -4354,6 +4354,53 @@ textarea {
 #view-profile [data-ext-list] > .item-card + .item-card { margin-top: 16px; }
 #view-profile :is(.sub-card-header, .item-card-header) { margin-bottom: 14px; padding: 10px 14px; min-height: 44px; }
 #view-profile .item-card .form-group { margin-bottom: 12px; }
+#view-profile .skill-fields .skill-description { min-height: 62px; }
+#view-profile .skill-picker { position: relative; min-width: 0; }
+#view-profile .skill-picker input { padding-inline-end: 38px; }
+.skill-picker-toggle {
+  position: absolute;
+  inset: 0 2px 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.skill-picker-toggle:hover { color: var(--primary-color); }
+.skill-picker-menu {
+  position: absolute;
+  z-index: 12;
+  inset: calc(100% + 6px) 0 auto;
+  max-height: var(--skill-menu-height, 280px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid var(--group-border);
+  border-radius: 10px;
+  background: var(--card-bg, var(--field-surface));
+  box-shadow: 0 8px 22px rgb(0 0 0 / 14%);
+}
+.skill-picker-menu.opens-up { inset: auto 0 calc(100% + 6px); }
+.skill-picker-group, .skill-picker-empty {
+  padding: 7px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.skill-picker-group { font-weight: 650; }
+.skill-picker-option {
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+}
+.skill-picker-option:is(:hover, .is-active, [aria-selected="true"]) {
+  background: var(--accent-bg-subtle);
+  color: var(--primary-color);
+}
 #view-profile #awardsList .form-group { margin-bottom: 10px; }
 
 /* 低频扩展字段折叠区内也保持两列 */

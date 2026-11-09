@@ -372,9 +372,13 @@ class StorageManager {
         ...(typeof item === 'string' ? { name: item, code: '', issuer: '', date: '', expiryDate: '' } : item)
       }));
     }
-    profile.skills = Array.isArray(profile.skills) ? profile.skills : [];
+    const legacySkills = profile.skills;
+    profile.skills = profileSkillEntries(profile);
+    if (profile.skills.length) delete profile.basicInfo.specialSkillProficiency;
     profile.attachments = { resume: null, idPhoto: null, lifePhoto: null, works: [], ...profile.attachments };
     profile.introTemplates = { default: '', custom: [], ...profile.introTemplates };
+    if (!profile.introTemplates.default && typeof legacySkills?.intro === 'string') profile.introTemplates.default = legacySkills.intro;
+    if (!profile.skillAdvantage && typeof legacySkills?.advantage === 'string') profile.skillAdvantage = legacySkills.advantage;
     return profile;
   }
 
@@ -423,6 +427,7 @@ class StorageManager {
       });
       if (source) {
         delete newProfile.lastUsedAt;
+        newProfile.skills = newProfile.skills.map(item => ({ ...item, id: this.generateId() }));
         for (const section of profileListKeys) {
           newProfile[section] = newProfile[section].map(item => ({ ...item, id: this.generateId() }));
         }
@@ -797,30 +802,41 @@ class StorageManager {
     return profile.attachments;
   }
 
-  // 导出数据（备份）- 只导出当前激活的资料
-  async exportData() {
+  async exportData(options = {}) {
     try {
       const data = await this.loadAll();
-      const activeProfile = data.profiles.find(p => p.id === data.activeProfileId);
-      if (!activeProfile) {
-        throw new Error('未找到当前激活的资料');
-      }
+      const ids = Array.isArray(options.profileIds) ? new Set(options.profileIds) : null;
+      const profiles = data.profiles.filter(profile => !ids || ids.has(profile.id)).map(profile => ({ ...profile }));
+      if (!profiles.length || (ids && profiles.length !== ids.size)) throw new Error('请重新选择要导出的简历');
 
-      // 只导出当前激活的资料
       const attachmentContents = {};
-      for (const ref of this.attachmentRefs(activeProfile)) {
-        const file = await attachmentStore.get(ref.id);
-        if (!file) throw new Error(`附件丢失：${ref.name}`);
-        attachmentContents[ref.id] = await attachmentStore.encode(file);
+      for (const profile of profiles) {
+        if (options.includeAttachments === false) {
+          delete profile.attachments;
+          delete profile.resumeFile;
+          delete profile.resumeFileName;
+          continue;
+        }
+        for (const ref of this.attachmentRefs(profile)) {
+          if (Object.hasOwn(attachmentContents, ref.id)) continue;
+          const file = await attachmentStore.get(ref.id);
+          const encoded = file && await attachmentStore.encode(file);
+          if (!encoded || encoded.name !== ref.name || encoded.size !== ref.size || encoded.type !== ref.type) {
+            throw new Error(`「${profile.name}」的附件无法核对：${ref.name}`);
+          }
+          attachmentContents[ref.id] = encoded;
+        }
       }
+      const settings = options.includeSettings === false ? {} : { ...data.settings };
+      if (options.includeApiKey !== true) delete settings.aiApiKey;
 
       const exportData = {
         version: '2.0.0',
         createdAt: data.createdAt,
-        profiles: [activeProfile],  // 只包含当前激活的资料
-        activeProfileId: activeProfile.id,
-        settings: data.settings || {},
-        submissions: data.submissions || [],
+        profiles,
+        activeProfileId: profiles.some(profile => profile.id === data.activeProfileId) ? data.activeProfileId : profiles[0].id,
+        settings,
+        submissions: options.includeSubmissions === false ? [] : data.submissions || [],
         attachmentContents
       };
 
@@ -831,22 +847,16 @@ class StorageManager {
     }
   }
 
-  // 导入数据（恢复）- 将导入的资料添加到现有资料列表
-  async importData(jsonString) {
-    try {
+  parseBackup(jsonString) {
       const importedData = JSON.parse(jsonString);
       if (!this.validateData(importedData)) {
         throw new Error('数据格式不正确');
       }
-      if (!importedData.profiles.length || importedData.profiles.some(p => !p || typeof p !== 'object' || typeof p.id !== 'string') ||
+      if (!importedData.profiles.length || importedData.profiles.some(p => !p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id.trim()) ||
           new Set(importedData.profiles.map(p => p.id)).size !== importedData.profiles.length ||
           (importedData.activeProfileId && !importedData.profiles.some(p => p.id === importedData.activeProfileId))) throw new Error('资料 ID 不正确');
       if (importedData.version && !['1.0.0', '2.0.0'].includes(importedData.version)) throw new Error('不支持此备份版本');
 
-      // 加载现有数据
-      const existingData = await this.loadAll();
-
-      const pending = [];
       for (const profile of importedData.profiles) {
         for (const key of profileListKeys) if (profile[key] != null && (!Array.isArray(profile[key]) || profile[key].some(item => !item || (typeof item !== 'object' && !(key === 'certificates' && typeof item === 'string'))))) throw new Error(`资料列表格式不正确：${key}`);
         for (const key of ['basicInfo', 'jobIntention', 'languageSkills', 'commonAnswers', 'attachments']) if (profile[key] != null && (typeof profile[key] !== 'object' || Array.isArray(profile[key]))) throw new Error(`资料格式不正确：${key}`);
@@ -855,50 +865,73 @@ class StorageManager {
           const file = importedData.attachmentContents?.[ref.id];
           if (!file || ref.name !== file.name || ref.size !== file.size || ref.type !== file.type) throw new Error('附件引用核对失败');
           if (attachmentStore.decode(file).type !== file.type) throw new Error('附件类型核对失败');
-          pending.push({ ref, file });
         }
         if (profile.resumeFile?.startsWith('data:')) attachmentStore.decode({ name: profile.resumeFileName || 'resume.pdf', dataUrl: profile.resumeFile });
       }
+      return importedData;
+  }
+
+  async previewBackup(jsonString) {
+    const backup = this.parseBackup(jsonString);
+    const current = await this.loadAll();
+    const ids = new Set(current.profiles.map(profile => profile.id));
+    const existingRows = new Set((current.submissions || []).map(row => row.id));
+    return {
+      profiles: backup.profiles.map(profile => ({ id: profile.id, name: profile.name || '未命名简历', conflict: ids.has(profile.id) })),
+      attachments: backup.profiles.reduce((count, profile) => count + this.attachmentRefs(profile).length + Number(!!profile.resumeFile), 0),
+      newSubmissions: new Set((Array.isArray(backup.submissions) ? backup.submissions : [])
+        .filter(row => typeof row?.id === 'string' && row.id && !existingRows.has(row.id)).map(row => row.id)).size,
+      existingSubmissions: new Set((Array.isArray(backup.submissions) ? backup.submissions : [])
+        .filter(row => existingRows.has(row?.id)).map(row => row.id)).size,
+      hasSettings: Object.keys(backup.settings).some(key => key !== 'aiApiKey'),
+      hasApiKey: typeof backup.settings.aiApiKey === 'string' && !!backup.settings.aiApiKey
+    };
+  }
+
+  async importData(jsonString, options = {}) {
+    try {
+      const importedData = this.parseBackup(jsonString);
+      const existingData = await this.loadAll();
+      const updateIds = new Set(Array.isArray(options.updateIds) ? options.updateIds : []);
+      const existing = new Map(existingData.profiles.map(profile => [profile.id, profile]));
+      const selected = importedData.profiles.filter(profile => !existing.has(profile.id) || updateIds.has(profile.id));
+      const replaced = selected.filter(profile => existing.has(profile.id)).flatMap(profile => this.attachmentRefs(existing.get(profile.id)));
 
       const created = [];
       try {
-        // 写入附件并更新引用
-        for (const { ref, file } of pending) {
-          const replacement = await this.writeAttachment(file);
-          created.push(replacement.id);
-          Object.assign(ref, replacement);
-        }
-
-        // 检查并处理ID冲突
-        const existingIds = new Set(existingData.profiles.map(p => p.id));
-        const newProfiles = [];
-
-        for (const importedProfile of importedData.profiles) {
-          if (existingIds.has(importedProfile.id)) {
-            // ID冲突，生成新ID
-            const timestamp = Date.now();
-            const random = Math.random().toString(36).substring(2, 11);
-            const newId = `id_${timestamp}_${random}`;
-            console.log(`[存储] 资料ID冲突，从 ${importedProfile.id} 改为 ${newId}`);
-            importedProfile.id = newId;
+        for (const profile of selected) {
+          if (!Object.hasOwn(profile, 'attachments') && !Object.hasOwn(profile, 'resumeFile') && existing.has(profile.id)) {
+            const previous = existing.get(profile.id);
+            profile.attachments = previous.attachments;
+            if (previous.resumeFile) {
+              profile.resumeFile = previous.resumeFile;
+              profile.resumeFileName = previous.resumeFileName;
+            }
+            continue;
           }
-          newProfiles.push(importedProfile);
+          for (const ref of this.attachmentRefs(profile)) {
+            const replacement = await this.writeAttachment(importedData.attachmentContents[ref.id]);
+            created.push(replacement.id);
+            Object.assign(ref, replacement);
+          }
         }
-
-        // 合并资料列表
-        existingData.profiles.push(...newProfiles);
-
-        // 设置激活资料为新导入的第一个
-        if (newProfiles.length > 0) {
-          existingData.activeProfileId = newProfiles[0].id;
+        const merged = new Map(existing);
+        for (const profile of selected) merged.set(profile.id, profile);
+        existingData.profiles = [...merged.values()];
+        if (selected.length) existingData.activeProfileId = selected.find(profile => profile.id === importedData.activeProfileId)?.id || selected[0].id;
+        if (options.restoreSettings === true) {
+          for (const [key, value] of Object.entries(importedData.settings)) {
+            if (key !== 'aiApiKey' && Object.hasOwn(existingData.settings, key)) existingData.settings[key] = value;
+          }
         }
+        if (options.restoreApiKey === true && typeof importedData.settings.aiApiKey === 'string') existingData.settings.aiApiKey = importedData.settings.aiApiKey;
 
         // Restore profile and tracker changes in one storage write; keep existing IDs.
         const restore = async () => {
           const rows = await this.getSubmissions();
           const ids = new Set(rows.map(row => row.id));
           for (const row of Array.isArray(importedData.submissions) ? importedData.submissions : []) {
-            if (row && typeof row.id === 'string' && !ids.has(row.id)) { rows.push(row); ids.add(row.id); }
+            if (row && typeof row.id === 'string' && row.id && !ids.has(row.id)) { rows.push(row); ids.add(row.id); }
           }
           await this.saveAll(this.fixData(existingData), rows);
         };
@@ -908,8 +941,11 @@ class StorageManager {
         await Promise.all(created.map(id => attachmentStore.remove(id)));
         throw error;
       }
+      const referenced = new Set(existingData.profiles.flatMap(profile => this.attachmentRefs(profile).map(ref => ref.id)));
+      await Promise.allSettled(replaced.filter(ref => !referenced.has(ref.id)).map(ref => attachmentStore.remove(ref.id)));
       console.log('[存储] 导入数据成功');
-      return true;
+      return { added: selected.filter(profile => !existing.has(profile.id)).length, updated: selected.filter(profile => existing.has(profile.id)).length,
+        skipped: importedData.profiles.length - selected.length };
     } catch (error) {
       console.error('[存储] 导入数据失败:', error);
       throw error;

@@ -789,7 +789,7 @@ function loadProfileToForm(profile) {
   renderFamilyList(profile.familyMembers || []);
   const certificates = normalizeCertificates(profile.certificates);
   renderCertificatesList(certificates);
-  renderSkillsList(profile.skills || []);
+  renderSkillsList(profileSkillEntries(profile));
 
   document.getElementById('introduction').value = profile.introTemplates?.default || '';
   updateResumeAttachmentUI(profile.attachments?.resume?.name || profile.resumeFileName || '', profile.attachments?.resume?.size || 0);
@@ -1124,7 +1124,11 @@ function renderProjectList(projectList) {
   initAllAppleSelects(container);
 }
 
-const EXPERIENCE_LIST_IDS = { internship: 'workList', education: 'educationList', work: 'workList', projects: 'projectList' };
+const EXPERIENCE_LIST_IDS = {
+  internship: 'workList', education: 'educationList', work: 'workList', projects: 'projectList', awards: 'awardsList',
+  family: 'familyList', certificates: 'certificatesList', skills: 'skillsList',
+  ...Object.fromEntries(['languageCertificates','campusPositions','campusActivities','trainings','papers','patents','openSource','customAnswers','declarations'].map(key => [key, `entryList-${key}`]))
+};
 
 function experienceOrderButtons(index = -1, total = 0) {
   return `<button type="button" data-move-entry="up" ${index === 0 ? 'disabled' : ''}>↑ 上移</button>
@@ -1221,7 +1225,7 @@ function renderAwardsList(awardsList) {
     setFieldValue(card.querySelector('.award-level'), award.level);
     appendExtendedFields(card, 'awards', award, ['category', 'grade', 'issuer', 'description']);
     wrapExtendedCollapse(card, 'awards', award, '奖励原因、名次与链接', ['reason', 'rank', 'role', 'url']);
-    enhanceItemCard(card);
+    enhanceItemCard(card, award.id);
     container.appendChild(card);
   });
 
@@ -1229,6 +1233,7 @@ function renderAwardsList(awardsList) {
     btn.addEventListener('click', (e) => deleteAward(e.currentTarget.getAttribute('data-id')));
   });
 
+  syncExperienceOrder(container);
   initAllAppleSelects(container);
 }
 
@@ -1239,27 +1244,28 @@ function renderFamilyList(members) {
   members.forEach((member, index) => {
     const card = document.createElement('div');
     card.className = 'item-card';
+    const fieldId = `family-card-${crypto.randomUUID()}`;
     card.innerHTML = `
       <div class="item-card-header">
         <h4><span class="item-index">${String(index + 1).padStart(2, '0')}</span><span>${html(member.name || '未填写成员')}${member.relation ? ` · ${html(member.relation)}` : ''}</span></h4>
         <button type="button" class="btn-delete" data-id="${attr(member.id)}" data-type="family">删除成员</button>
       </div>
-      <div class="form-row form-row-3">
-        <div class="form-group"><label>姓名</label><input type="text" class="family-name" data-id="${attr(member.id)}" value="${attr(member.name)}"></div>
-        <div class="form-group"><label>与本人关系</label><input type="text" class="family-relation" value="${attr(member.relation)}" placeholder="父亲 / 母亲 / 配偶"></div>
-        <div class="form-group"><label>联系电话</label><input type="tel" class="family-phone" value="${attr(member.phone)}"></div>
-      </div>
       <div class="form-row">
-        <div class="form-group"><label>工作单位</label><input type="text" class="family-employer" value="${attr(member.employer)}"></div>
-        <div class="form-group"><label>职务</label><input type="text" class="family-position" value="${attr(member.position)}"></div>
+        <div class="form-group"><label for="${fieldId}-name">姓名</label><input id="${fieldId}-name" type="text" class="family-name" data-id="${attr(member.id)}" value="${attr(member.name)}"></div>
+        <div class="form-group"><label for="${fieldId}-relation">与本人关系</label><input id="${fieldId}-relation" type="text" class="family-relation" value="${attr(member.relation)}" placeholder="父亲 / 母亲 / 配偶"></div>
+        <div class="form-group"><label for="${fieldId}-phone">联系电话</label><input id="${fieldId}-phone" type="tel" class="family-phone" value="${attr(member.phone)}"></div>
+        <div class="form-group"><label for="${fieldId}-occupation">职业</label><input id="${fieldId}-occupation" type="text" data-ext-key="occupation" value="${attr(member.occupation)}" placeholder="例如 教师、个体经营者"></div>
+        <div class="form-group"><label for="${fieldId}-employer">工作单位</label><input id="${fieldId}-employer" type="text" class="family-employer" value="${attr(member.employer)}" placeholder="例如 某某学校、某某商行"></div>
+        <div class="form-group"><label for="${fieldId}-position">职务</label><input id="${fieldId}-position" type="text" class="family-position" value="${attr(member.position)}" placeholder="例如 班主任、店主"></div>
       </div>`;
-    wrapExtendedCollapse(card, 'familyMembers', member, '高级家庭成员字段');
-    enhanceItemCard(card);
+    appendExtendedFields(card, 'familyMembers', member, ['birthDate', 'age', 'politicalStatus', 'homeAddress']);
+    enhanceItemCard(card, member.id);
     container.appendChild(card);
   });
   container.querySelectorAll('.btn-delete[data-type="family"]').forEach((btn) => {
     btn.addEventListener('click', (e) => deleteFamilyMember(e.currentTarget.getAttribute('data-id')));
   });
+  syncExperienceOrder(container);
 }
 
 function renderCertificatesList(certificates) {
@@ -1290,26 +1296,169 @@ function renderCertificatesList(certificates) {
     grid.insertAdjacentHTML('afterbegin', `
       <div class="form-group"><label>取得日期</label><input type="text" class="certificate-date" value="${attr(certificate.date)}" placeholder="例如: 2025-06"></div>`);
     appendExtendedFields(supplement.querySelector('.ext-collapse-body'), 'certificates', certificate, ['description']);
-    enhanceItemCard(card);
+    enhanceItemCard(card, certificate.id);
     container.appendChild(card);
   });
   container.querySelectorAll('.btn-delete[data-type="certificate"]').forEach((btn) => {
     btn.addEventListener('click', (e) => deleteCertificate(e.currentTarget.getAttribute('data-id')));
   });
+  syncExperienceOrder(container);
 }
 
 function renderSkillsList(skills) {
   const container = document.getElementById('skillsList');
   container.innerHTML = '';
-  (skills || []).forEach((skill) => {
-    const tag = document.createElement('div');
-    tag.className = 'tag';
-    tag.innerHTML = `${html(skill)}<span class="tag-remove" data-skill="${attr(skill)}">×</span>`;
-    container.appendChild(tag);
+  skills.forEach((skill, index) => appendSkillCard(container, skill, index));
+  syncExperienceOrder(container);
+}
+
+const IT_SKILL_GROUPS = [
+  ['办公与协作', ['Office', 'Excel', 'Word', 'PowerPoint', 'Access', 'Visio', 'WPS']],
+  ['数据分析与统计', ['数据分析', '数据建模', '数据挖掘', 'SPSS', 'SAS', 'R语言', 'MATLAB', 'Stata', 'Power BI', 'Tableau', 'OLAP']],
+  ['数据库与大数据', ['SQL', 'MySQL', 'SQL Server', 'Oracle', 'DB2', 'PostgreSQL', 'SQLite', 'Redis', 'MongoDB', 'Hive', 'Hadoop', 'Spark', 'Sybase', 'ERwin']],
+  ['编程与软件开发', ['Python', 'Java', 'C/C++', 'C', 'C++', 'C#', 'C#.NET', '.NET', 'ASP.NET', 'Visual Basic', 'Go', 'Rust', 'Ruby', 'PHP', 'Lua', 'Perl', 'Clojure']],
+  ['网页与移动开发', ['Web前端', 'HTML5', 'CSS', 'JavaScript', 'TypeScript', 'React', 'Vue', 'Android', 'iOS', 'XML/XSLT', 'ActiveX', 'SEO']],
+  ['系统与开发工具', ['Linux', 'Shell', 'Git', 'Docker', 'Kubernetes']],
+  ['设计与多媒体', ['UI', 'PS', 'Figma', 'AutoCAD', 'CATIA', 'CorelDRAW', '3D Studio', '3D Studio MAX', 'Blender', 'Maya', 'LightWave', 'PageMaker', 'Dreamweaver', 'Director', 'FrontPage', 'Flash', 'GoLive']]
+];
+const IT_SKILL_LEVELS = [['', ['一般', '良好', '熟悉', '精通', '了解', '熟练']]];
+
+function bindSkillPicker(input, groups) {
+  const root = input.parentElement;
+  const menu = root.querySelector('[role="listbox"]');
+  const toggle = root.querySelector('button');
+  const normalize = text => text.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  let options = [];
+  let active = -1;
+
+  function highlight(index) {
+    options[active]?.classList.remove('is-active');
+    active = index;
+    const option = options[active];
+    if (!option) {
+      input.removeAttribute('aria-activedescendant');
+      return;
+    }
+    option.classList.add('is-active');
+    input.setAttribute('aria-activedescendant', option.id);
+    option.scrollIntoView({ block: 'nearest' });
+  }
+
+  function close() {
+    menu.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    highlight(-1);
+  }
+
+  function open(query = '') {
+    const search = normalize(query);
+    let count = 0;
+    menu.innerHTML = groups.map(([group, names]) => {
+      const items = names.filter(name => normalize(group + name).includes(search)).map(name =>
+        `<div id="${menu.id}-${++count}" class="skill-picker-option" role="option" aria-selected="${name === input.value}">${html(name)}</div>`
+      ).join('');
+      if (!items || !group) return items;
+      return `<div role="group" aria-label="${attr(group)}"><div class="skill-picker-group" aria-hidden="true">${html(group)}</div>${items}</div>`;
+    }).join('') || '<p class="skill-picker-empty">没有匹配项，保留输入内容即可。</p>';
+    options = [...menu.querySelectorAll('[role="option"]')];
+    active = -1;
+    input.removeAttribute('aria-activedescendant');
+    const { top, bottom } = root.getBoundingClientRect();
+    const below = window.innerHeight - bottom;
+    const above = top - (document.querySelector('.navbar')?.getBoundingClientRect().bottom || 0);
+    const flip = below < 200 && above > below;
+    menu.classList.toggle('opens-up', flip);
+    menu.style.setProperty('--skill-menu-height', `${Math.max(80, Math.min(300, (flip ? above : below) - 12))}px`);
+    menu.hidden = false;
+    menu.scrollTop = 0;
+    input.setAttribute('aria-expanded', 'true');
+  }
+
+  function choose(option) {
+    input.value = option.textContent;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    close();
+  }
+
+  input.addEventListener('focus', () => open());
+  input.addEventListener('click', () => { if (menu.hidden) open(); });
+  input.addEventListener('blur', close);
+  input.addEventListener('input', () => open(input.value));
+  input.addEventListener('keydown', event => {
+    if (event.isComposing) return;
+    if (event.key === 'Escape' && !menu.hidden) {
+      event.preventDefault();
+      close();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (menu.hidden) open();
+      if (options.length) {
+        const next = event.key === 'ArrowDown' ? active + 1 : active < 0 ? options.length - 1 : active - 1;
+        highlight(Math.min(options.length - 1, Math.max(0, next)));
+      }
+    } else if (event.key === 'Enter' && !menu.hidden) {
+      event.preventDefault();
+      if (active >= 0) choose(options[active]);
+      else close();
+    }
   });
-  container.querySelectorAll('.tag-remove').forEach((btn) => {
-    btn.addEventListener('click', (e) => removeSkill(e.currentTarget.getAttribute('data-skill')));
+  toggle.addEventListener('mousedown', event => event.preventDefault());
+  toggle.addEventListener('click', () => {
+    const wasOpen = !menu.hidden;
+    input.focus();
+    if (wasOpen) close();
+    else open();
   });
+  menu.addEventListener('mousedown', event => {
+    if (event.target.closest('[role="option"]')) event.preventDefault();
+  });
+  menu.addEventListener('click', event => {
+    const option = event.target.closest('[role="option"]');
+    if (option) choose(option);
+  });
+}
+
+function skillPickerMarkup(id, label, fieldClass, value, placeholder) {
+  return `<div class="form-group"><label for="${id}">${label}</label>
+    <div class="skill-picker">
+      <input id="${id}" type="text" class="${fieldClass}" value="${attr(value)}" placeholder="${placeholder}"
+        role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="${id}-options" autocomplete="off">
+      <button type="button" class="skill-picker-toggle" tabindex="-1" aria-label="展开${label}">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+      </button>
+      <div id="${id}-options" class="skill-picker-menu" role="listbox" aria-label="${label}选项" hidden></div>
+    </div></div>`;
+}
+
+function appendSkillCard(container, skill, index = container.children.length) {
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  const fieldId = `skill-card-${crypto.randomUUID()}`;
+  card.innerHTML = `<div class="item-card-header"><h4><span class="item-index">${index + 1}</span><span>${html(skill.name || '新技能')}</span></h4>
+    <button type="button" class="btn-delete">删除技能</button></div>
+    <div class="form-row skill-fields">
+      ${skillPickerMarkup(`${fieldId}-name`, '技能名称', 'skill-name', skill.name, '搜索技能或直接输入')}
+      ${skillPickerMarkup(`${fieldId}-level`, '掌握程度', 'skill-proficiency', skill.proficiency, '选择或输入掌握程度')}
+      <div class="form-group"><label for="${fieldId}-category">自定义分类 <span class="label-tip">选填</span></label>
+        <input id="${fieldId}-category" type="text" class="skill-category" value="${attr(skill.category)}" placeholder="例如 数据分析、办公软件"></div>
+      <div class="form-group"><label for="${fieldId}-notes">补充说明 <span class="label-tip">选填</span></label>
+        <textarea id="${fieldId}-notes" class="skill-description" rows="2" placeholder="例如 能用数据透视表制作业务报表">${html(skill.description)}</textarea></div>
+    </div>`;
+  const name = card.querySelector('.skill-name');
+  bindSkillPicker(name, IT_SKILL_GROUPS);
+  bindSkillPicker(card.querySelector('.skill-proficiency'), IT_SKILL_LEVELS);
+  name.addEventListener('input', () => { card.querySelector('.item-index + span').textContent = name.value.trim() || '新技能'; });
+  card.querySelector('.btn-delete').onclick = () => { card.remove(); syncExperienceOrder(container); debouncedSave(); };
+  enhanceItemCard(card, skill.id);
+  container.append(card);
+  return name;
+}
+
+function collectSkillsData() {
+  return [...document.querySelectorAll('#skillsList > .item-card')].map(card => ({ id: card.dataset.entryId,
+    name: card.querySelector('.skill-name').value.trim(), proficiency: card.querySelector('.skill-proficiency').value.trim(),
+    category: card.querySelector('.skill-category').value.trim(), description: card.querySelector('.skill-description').value.trim()
+  })).filter(skill => skill.name || skill.proficiency || skill.category || skill.description);
 }
 
 function bindEvents() {
@@ -1367,7 +1516,7 @@ function bindEvents() {
       const module = row.closest('[data-module]').dataset.module;
       navigateWorkspace(module, true);
       const list = document.getElementById(EXPERIENCE_LIST_IDS[module]);
-      const card = [...list.children].find(entry => entry.dataset.entryId === row.dataset.entryId);
+      const card = [...(list?.children || [])].find(entry => entry.dataset.entryId === row.dataset.entryId);
       if (card?.classList.contains('is-collapsed-item')) card.querySelector('.item-collapse-btn').click();
       card?.scrollIntoView({ block: 'center' });
       card?.querySelector('input')?.focus({ preventScroll: true });
@@ -1394,12 +1543,7 @@ function bindEvents() {
   document.getElementById('addFamilyBtn')?.addEventListener('click', addFamilyMember);
   document.getElementById('addCertificateBtn')?.addEventListener('click', addCertificate);
 
-  document.getElementById('skillInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addSkill();
-    }
-  });
+  document.getElementById('addSkillBtn').addEventListener('click', addSkill);
 
   document.querySelectorAll('.btn-template').forEach((btn) => {
     btn.addEventListener('click', (e) => loadIntroductionTemplate(e.target.getAttribute('data-template')));
@@ -1549,7 +1693,7 @@ function bindEvents() {
   for (const eventName of ['input', 'change']) {
     document.getElementById('view-profile').addEventListener(eventName, event => {
       const input = event.target;
-      if (!input.matches('input,select,textarea') || input.type === 'file' || input.id === 'skillInput' || input.closest('#section-ai,#section-parser,.module-tiles')) return;
+      if (!input.matches('input,select,textarea') || input.type === 'file' || input.closest('#section-ai,#section-parser,.module-tiles')) return;
       debouncedSave();
       if (eventName === 'change' && input.matches('.work-type')) applyWorkModuleFilter();
     });
@@ -1779,7 +1923,7 @@ function collectProfileUpdates() {
     education: collectEducationData(),
     workExperience: collectWorkData(),
     projects: collectProjectData(),
-    skills: currentProfile?.skills || [],
+    skills: collectSkillsData(),
     introTemplates: {
       default: document.getElementById('introduction').value.trim()
     },
@@ -1856,24 +2000,74 @@ chrome.runtime.onMessage.addListener((request, _sender, respond) => {
   }
 });
 
-async function exportBackup() {
+function backupChoiceDialog(title, summary, choices, confirmText) {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'backup-choice-dialog';
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    const description = document.createElement('p');
+    description.textContent = summary;
+    const list = document.createElement('div');
+    list.className = 'backup-choice-list';
+    const inputs = choices.map(choice => {
+      const label = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = !!choice.checked;
+      label.append(input, document.createTextNode(choice.label));
+      list.append(label);
+      return input;
+    });
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    form.className = 'backup-dialog-actions';
+    for (const [label, value] of [['取消', 'cancel'], [confirmText, 'apply']]) {
+      const button = document.createElement('button');
+      button.textContent = label;
+      button.value = value;
+      button.className = value === 'apply' ? 'shell-button backup-primary' : 'shell-button';
+      form.append(button);
+    }
+    dialog.append(heading, description, list, form);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      const values = dialog.returnValue === 'apply' ? Object.fromEntries(choices.map((choice, i) => [choice.key, inputs[i].checked])) : null;
+      dialog.remove();
+      resolve(values);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
+async function exportBackup(event) {
   try {
-    const response = await sendMessage({ action: 'exportData' });
+    const options = { includeApiKey: !!document.getElementById('backupIncludeKey')?.checked };
+    const partial = event === 'partial';
+    const scope = await backupChoiceDialog(partial ? '选择导出内容' : '导出全部资料',
+      partial ? `选择一份或多份简历，再决定是否包含其他资料。${options.includeApiKey ? '勾选包含设置时也会导出 API Key。' : '本次不含 API Key。'}` : `备份全部 ${allProfiles.length} 份简历及附件、投递记录和设置。${options.includeApiKey ? '本次包含 API Key。' : '本次不含 API Key。'}`,
+      partial ? [
+        ...allProfiles.map(profile => ({ key: `profile:${profile.id}`, label: profile.name || '未命名简历', checked: profile.id === currentProfile?.id })),
+        { key: 'includeAttachments', label: '包含所选简历的附件', checked: true },
+        { key: 'includeSubmissions', label: '包含投递记录' }, { key: 'includeSettings', label: '包含设置' }
+      ] : [], '下载 JSON');
+    if (!scope) return;
+    if (partial) {
+      options.profileIds = allProfiles.filter(profile => scope[`profile:${profile.id}`]).map(profile => profile.id);
+      if (!options.profileIds.length) throw new Error('请至少选择一份简历');
+      for (const key of ['includeAttachments', 'includeSubmissions', 'includeSettings']) options[key] = scope[key];
+    }
+    const response = await sendMessage({ action: 'exportData', options });
     if (!response?.success) throw new Error(response?.error || '请重试');
     const backup = JSON.parse(response.data);
-    if (!document.getElementById('backupIncludeKey')?.checked && backup.settings) delete backup.settings.aiApiKey;
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const blob = new Blob([response.data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    // 使用当前资料名称作为文件名，移除非法字符
-    const profileName = currentProfile?.name || '易offer';
-    const safeName = profileName.replace(/[<>:"/\\|?*]/g, '_');
-    a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `易offer-${partial ? '部分' : '全部'}备份_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    const count = Object.keys(JSON.parse(response.data).attachmentContents || {}).length;
-    showToast(count ? `资料已导出，含 ${count} 个附件` : '资料已导出（当前没有附件）', 'success');
+    showToast(`已开始下载 ${backup.profiles.length} 份简历的备份`, 'success');
   } catch (error) {
     showToast('导出失败：' + error.message, 'error');
   }
@@ -1881,18 +2075,23 @@ async function exportBackup() {
 
 async function importBackup(file) {
   if (!file) return;
-  const ok = await showAppleConfirm({
-    title: '导入资料备份',
-    subtitle: '将替换当前全部资料、附件、设置和投递记录。导入失败会保留现有数据。',
-    confirmText: '确认导入',
-    isDanger: true
-  });
-  if (!ok) return;
   try {
     const data = await file.text();
-    const response = await sendMessage({ action: 'importData', data });
+    const check = await sendMessage({ action: 'previewBackup', data });
+    if (!check?.success) throw new Error(check?.error || '备份无法预览');
+    const preview = check.preview;
+    const conflicts = preview.profiles.filter(profile => profile.conflict);
+    const choices = conflicts.map(profile => ({ key: `update:${profile.id}`, label: `更新已有简历「${profile.name}」` }));
+    if (preview.hasSettings) choices.push({ key: 'restoreSettings', label: '恢复备份中的设置' });
+    if (preview.hasApiKey) choices.push({ key: 'restoreApiKey', label: '恢复备份中的 API Key' });
+    const selected = await backupChoiceDialog('预览资料恢复',
+      `新增 ${preview.profiles.length - conflicts.length} 份简历 · ${conflicts.length} 份同 ID 简历默认跳过 · 备份含 ${preview.attachments} 个附件 · 合并 ${preview.newSubmissions} 条新投递记录 · 保留 ${preview.existingSubmissions} 条同 ID 投递记录。${preview.profiles.some(profile => !profile.conflict) ? '\n新增简历：' + preview.profiles.filter(profile => !profile.conflict).map(profile => profile.name).join('、') : ''}`, choices, '确认导入');
+    if (!selected) return;
+    const options = { updateIds: conflicts.filter(profile => selected[`update:${profile.id}`]).map(profile => profile.id),
+      restoreSettings: selected.restoreSettings, restoreApiKey: selected.restoreApiKey };
+    const response = await sendMessage({ action: 'importData', data, options });
     if (!response?.success) throw new Error(response?.error || '数据格式不匹配');
-    showToast('资料已导入', 'success');
+    showToast(`恢复完成 · 新增 ${response.added} · 更新 ${response.updated} · 跳过 ${response.skipped}`, 'success');
   } catch (error) {
     showToast('导入失败：' + error.message, 'error');
   }
@@ -2072,22 +2271,9 @@ async function deleteCertificate(certificateId) {
 }
 
 function addSkill() {
-  const input = document.getElementById('skillInput');
-  const skill = input.value.trim();
-  if (!skill) return;
-  if (!currentProfile.skills) currentProfile.skills = [];
-  if (!currentProfile.skills.includes(skill)) {
-    currentProfile.skills.push(skill);
-    renderSkillsList(currentProfile.skills);
-  debouncedSave();
-  }
-  input.value = '';
-}
-
-function removeSkill(skill) {
-  currentProfile.skills = (currentProfile.skills || []).filter((item) => item !== skill);
-  renderSkillsList(currentProfile.skills);
-  debouncedSave();
+  const list = document.getElementById('skillsList');
+  appendSkillCard(list, { id: generateId() }).focus();
+  syncExperienceOrder(list);
 }
 
 function loadIntroductionTemplate(type) {
@@ -2391,7 +2577,7 @@ function fillParsedData(data) {
   // 技能标签
   if (data.skills && data.skills.length) {
     currentProfile.skills = data.skills;
-    renderSkillsList(currentProfile.skills);
+    renderSkillsList(profileSkillEntries(currentProfile));
   }
 
   // 自我介绍
@@ -2629,7 +2815,7 @@ const EXTENDED_FIELD_ORDER = {
     'sourcePlace', 'registeredAddress', 'leagueJoinDate', 'partyJoinDate', 'nationality', 'height', 'weight', 'health',
     'englishName', 'lastNamePinyin', 'firstNamePinyin', 'namePinyinFull', 'wechat', 'qq', 'idCardType',
     'bloodType', 'registeredAddressType', 'religion', 'openToWork', 'yearsOfWork', 'permanentResidencePermit',
-    'archiveOrganization', 'professionalTitle', 'birthPlace', 'interests'
+    'archiveOrganization', 'professionalTitle', 'birthPlace', 'childhoodCity', 'interests'
   ],
   awards: ['category', 'grade', 'issuer', 'rank', 'role', 'url', 'reason', 'description'],
   jobIntention: ['salaryCurrency', 'salaryUnit', 'salaryPeriod', 'acceptAdjustment', 'acceptCounty', 'referred',
@@ -2723,6 +2909,7 @@ function appendExtendedEntry(section, root, entry) {
     remove.textContent = '删除条目';
     remove.onclick = () => {
       card.remove();
+      syncExperienceOrder(root);
       if (isLanguage) refreshLanguageCards(root);
       debouncedSave();
     };
@@ -2751,8 +2938,9 @@ function appendExtendedEntry(section, root, entry) {
     } else {
       appendExtendedFields(card, section, entry);
     }
-    enhanceItemCard(card);
+    enhanceItemCard(card, entry.id);
     root.append(card);
+    syncExperienceOrder(root);
     return card;
 }
 
@@ -2886,6 +3074,7 @@ function renderExtendedProfile(profile) {
     else {
       const list = document.createElement('div');
       list.dataset.extList = section;
+      list.id = `entryList-${section}`;
       if (section === 'languageCertificates') {
         const note = document.createElement('p');
         note.className = 'language-help';
@@ -3059,7 +3248,7 @@ const WORKSPACE_BASE_MODULES = [
   ['ai', 'AI 模型配置'], ['parser', '简历源文件 & AI 解析'], ['basic', '基础个人信息'],
   ['intention', '求职意向'], ['education', '教育经历'], ['work', '工作经历'], ['internship', '实习经历'], ['languageCertificates', '外语能力'],
   ['projects', '项目经历'], ['awards', '荣誉奖项'], ['certificates', '资格证书'],
-  ['family', '家庭成员'], ['skills', '技能'], ['introduction', '自我介绍'], ['aiTools', 'AI 工具应用'], ['dates', '日期待完善'], ['modules', '模块管理'], ['actions', '保存 / 删除资料']
+  ['family', '家庭成员'], ['skills', 'IT 技能'], ['introduction', '自我介绍'], ['aiTools', 'AI 工具应用'], ['dates', '日期待完善'], ['modules', '模块管理'], ['actions', '保存 / 删除资料']
 ];
 const WORKSPACE_EXTRA_MODULES = [
   ['campusPositions', '在校职务'], ['campusActivities', '校园活动'], ['trainings', '培训经历'], ['papers', '论文'], ['patents', '专利'], ['openSource', '开源成果'],
@@ -3279,13 +3468,6 @@ function overviewRow(label, value) {
   return `<div class="ov-row${text.length > 38 ? ' ov-wide' : ''}"><dt>${html(label)}</dt><dd>${html(text)}</dd></div>`;
 }
 
-function overviewEntryItem(main, sub) {
-  const mainText = String(main ?? '').trim();
-  if (!mainText) return '';
-  const subText = String(sub ?? '').trim();
-  return `<div class="ov-entry"><p class="ov-entry-main">${html(mainText)}</p>${subText ? `<p class="ov-entry-sub">${html(subText)}</p>` : ''}</div>`;
-}
-
 function overviewCardHtml(moduleKey, title, bodyHtml, entryCount) {
   return `<section class="overview-card" data-module="${attr(moduleKey)}">
     <header class="overview-card-header">
@@ -3296,19 +3478,14 @@ function overviewCardHtml(moduleKey, title, bodyHtml, entryCount) {
   </section>`;
 }
 
-function overviewListBody(entries, lineBuilder) {
-  if (!entries.length) return '';
-  if (workspaceModule !== 'overview') return entries.map(lineBuilder).join('');
-  const visible = entries.slice(0, 3).map(lineBuilder).join('');
-  return visible + (entries.length > 3 ? `<p class="ov-more">… 共 ${entries.length} 条，点击「编辑」查看全部</p>` : '');
-}
-
 function overviewExperienceList(entries, details) {
   return entries.map((entry, index) => {
     const { title, meta, descriptions } = details(entry);
     const date = [entry.startDate, entry.endDate].filter(Boolean).join(' 至 ');
     const text = descriptions.filter(([, value]) => String(value || '').trim())
-      .map(([label, value]) => `<div class="experience-copy"><strong>${html(label)}</strong><p>${html(value)}</p></div>`).join('');
+      .map(([label, value]) => String(value).length > 120
+        ? `<details class="experience-copy"><summary>${html(label)}</summary><p>${html(value)}</p></details>`
+        : `<div class="experience-copy"><strong>${html(label)}</strong><p>${html(value)}</p></div>`).join('');
     return `<article class="experience-preview" data-entry-id="${attr(entry.id)}">
       <header class="experience-preview-header">
         <h4>${html(title || '未命名经历')}</h4>
@@ -3453,10 +3630,11 @@ function renderProfileOverview() {
     descriptions: [['项目介绍', item.description], ['项目职责', item.responsibilities], ['项目成果', item.achievements]]
   }));
 
-  const skills = Array.isArray(snapshot.skills) ? snapshot.skills.filter(Boolean) : [];
+  const skills = profileSkillEntries(snapshot).filter(skill => skill.name || skill.proficiency || skill.category || skill.description);
   const attachments = currentProfile?.attachments || {};
   const skillsBody = [
-    skills.length ? `<div class="ov-tags">${skills.map((skill) => `<span class="ov-tag">${html(skill)}</span>`).join('')}</div>` : '',
+    overviewExperienceList(skills, skill => ({ title: skill.name, meta: [skill.category],
+      descriptions: [['掌握程度', skill.proficiency], ['补充说明', skill.description]] })),
 
     overviewRow('简历附件', attachments.resume?.name || snapshot.resumeFileName || ''),
     attachments.idPhoto ? overviewRow('证件照', attachments.idPhoto.name) : '',
@@ -3470,30 +3648,29 @@ function renderProfileOverview() {
     ['education', overviewCardHtml('education', '教育经历', educationBody, education.length)],
     ['work', overviewCardHtml('work', '工作 / 实习经历', workBody, work.length)],
     ['projects', overviewCardHtml('projects', '项目经历', projectsBody, projects.length)],
-    ['skills', overviewCardHtml('skills', '技能与附件', skillsBody)]
+    ['skills', overviewCardHtml('skills', 'IT 技能', skillsBody, skills.length)]
   ]);
 
   // 低频与辅助模块：仅有业务数据时才生成概览卡，空模块不占屏
   const listCards = [
-    ['awards', '荣誉奖项', 'awards', (item) => overviewEntryItem(item.name, [item.category, item.level, item.grade, item.issuer, item.date].filter(Boolean).join(' · '))],
-    ['certificates', '资格证书', 'certificates', (item) => overviewEntryItem(item.name, [item.issuer, item.date, item.level, item.code].filter(Boolean).join(' · '))],
-    ['family', '家庭成员', 'familyMembers', (item) => overviewEntryItem([item.name, item.relation].filter(Boolean).join(' · '), item.employer)],
-    ['campusPositions', '在校职务', 'campusPositions', (item) => overviewEntryItem([item.organization, item.title].filter(Boolean).join(' · '), [item.level, item.startDate, item.endDate].filter(Boolean).join(' · '))],
-    ['campusActivities', '校园活动', 'campusActivities', (item) => overviewEntryItem([item.name, item.role].filter(Boolean).join(' · '), [item.participation, item.startDate, item.endDate].filter(Boolean).join(' · '))],
-    ['trainings', '培训经历', 'trainings', (item) => overviewEntryItem(item.name, [item.institution, item.startDate, item.endDate].filter(Boolean).join(' · '))],
-    ['languageCertificates', '外语能力', 'languageCertificates', (item) => overviewEntryItem(languageCardTitle(item),
-      [item.score, item.obtainedDate, item.proficiency, item.listeningSpeaking && `听说 ${item.listeningSpeaking}`,
-        item.readingWriting && `读写 ${item.readingWriting}`, item.notes].filter(Boolean).join(' · '))],
-    ['papers', '论文', 'papers', (item) => overviewEntryItem(item.name, [item.publisher, item.date].filter(Boolean).join(' · '))],
-    ['patents', '专利', 'patents', (item) => overviewEntryItem(item.name, item.inventor)],
-    ['openSource', '开源成果', 'openSource', (item) => overviewEntryItem(item.url, [item.stars ? `Stars ${item.stars}` : '', item.date].filter(Boolean).join(' · '))],
-    ['customAnswers', '额外问答', 'customAnswers', (item) => overviewEntryItem(item.question, item.answer)],
-    ['declarations', '个人声明', 'declarations', (item) => overviewEntryItem(item.question, item.answer)]
+    ['awards', '荣誉奖项', 'awards', { level:'级别', date:'获奖日期' }],
+    ['certificates', '资格证书', 'certificates', { issuer:'颁发机构', code:'编号', date:'取得日期', expiryDate:'有效期至' }],
+    ['family', '家庭成员', 'familyMembers', { relation:'关系', employer:'工作单位', position:'职务', phone:'联系电话' }],
+    ['campusPositions', '在校职务', 'campusPositions'], ['campusActivities', '校园活动', 'campusActivities'],
+    ['trainings', '培训经历', 'trainings'], ['languageCertificates', '外语能力', 'languageCertificates'],
+    ['papers', '论文', 'papers'], ['patents', '专利', 'patents'], ['openSource', '开源成果', 'openSource'],
+    ['customAnswers', '额外问答', 'customAnswers'], ['declarations', '个人声明', 'declarations']
   ];
-  for (const [moduleKey, title, dataKey, lineBuilder] of listCards) {
+  for (const [moduleKey, title, dataKey, extra] of listCards) {
     const entries = listEntriesWithData(snapshot, dataKey);
     if (!entries.length) continue;
-    cards.set(moduleKey, overviewCardHtml(moduleKey, title, overviewListBody(entries, lineBuilder), entries.length));
+    const fields = { ...extra, ...profileSchema[dataKey] };
+    const details = item => ({
+      title: dataKey === 'languageCertificates' ? languageCardTitle(item) : item.name || item.organization || item.title || item.question || item.url,
+      meta: [], descriptions: Object.entries(fields).filter(([key]) => !['name','question','startDate','endDate'].includes(key))
+        .map(([key, label]) => [label, item[key]])
+    });
+    cards.set(moduleKey, overviewCardHtml(moduleKey, title, overviewExperienceList(entries, details), entries.length));
   }
   const commonAnswers = snapshot.commonAnswers || {};
   const commonRows = Object.entries(profileSchema.commonAnswers || {}).filter(([key]) => key !== 'aiTools').map(([key, label]) =>

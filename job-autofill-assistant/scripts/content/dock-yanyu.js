@@ -238,6 +238,10 @@ function showYanyuTaskResult(result) {
     numeric_score_required: '网站需要数字成绩，请核对资料',
     low_confidence: '字段含义需要确认',
     write_failed_or_option_not_found: '控件未确认或没有匹配选项',
+    value_reset: '网页清空或改写了选中值',
+    validation_failed: '网页校验未通过',
+    record_ambiguous: '无法确认该网页行对应的简历条目',
+    range_not_committed: '日期范围未确认',
     date_precision_required: '网站需要具体日期，请核对资料',
     field_timeout: '等待控件响应超时',
     unrecognized_field: '尚未识别此字段'

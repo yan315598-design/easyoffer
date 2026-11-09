@@ -222,6 +222,43 @@ function appendUndiscoveredFields(items, sourceObj, knownKeys, section, prefix =
   }
 }
 
+function quickReferenceCatalog(profile) {
+  if (!profile) return {};
+  const categories = {
+    basic: { familyMembers: '家庭成员' },
+    edu: { education: '教育经历', languageCertificates: '语言能力', awards: '荣誉奖项', certificates: '资格证书', papers: '论文', patents: '专利' },
+    exp: { workExperience: '实习与工作', projects: '项目经历', campusPositions: '在校职务', campusActivities: '校园活动', trainings: '培训经历', skills: 'IT 技能', openSource: '开源作品' },
+    qa: {}
+  };
+  const flat = { ...profile };
+  for (const section of Object.values(categories).flatMap(Object.keys)) delete flat[section];
+  return Object.fromEntries(Object.entries(categories).map(([category, sections]) => {
+    const groups = [{
+      title: { basic: '基本信息与求职意向', edu: '外语成绩', exp: '补充资料', qa: '问答与自述' }[category],
+      items: getCopyItemsForCategory(flat, category)
+    }].filter(group => group.items.length);
+    for (const [section, heading] of Object.entries(sections)) {
+      const entries = section === 'skills' ? profileSkillEntries(profile) : section === 'languageCertificates'
+        ? profileLanguageEntries(profile) : profile[section] || [];
+      if (!Array.isArray(entries)) continue;
+      entries.forEach((source, index) => {
+        const entry = typeof source === 'string' ? { name: source } : source;
+        const items = Object.entries(entry || {}).filter(([key, val]) =>
+          !['id', 'createdAt', 'updatedAt'].includes(key) && ['string', 'number'].includes(typeof val) && String(val).trim() && val !== '~')
+          .map(([key, val]) => {
+            const label = (section === 'skills' ? { name: '技能名称', category: '技能类别', proficiency: '熟练程度', description: '补充说明' }[key] : '') ||
+              resolveFieldLabel(section, key);
+            return { key, label, val: String(val), block: String(val).length > 100 || String(val).includes('\n') };
+          });
+        if (!items.length) return;
+        groups.push({ section, entry, items, heading,
+          title: entry.school || entry.company || entry.name || entry.title || entry.language || entry.organization || `第 ${index + 1} 条` });
+      });
+    }
+    return [category, groups];
+  }));
+}
+
 function getCopyItemsForCategory(profile, category) {
   if (!profile) return [];
   const items = [];
@@ -325,6 +362,8 @@ function getCopyItemsForCategory(profile, category) {
       pushCopyRow(items, `${prefix}职务`, member.position);
       pushCopyRow(items, `${prefix}电话`, member.phone);
       pushCopyRow(items, `${prefix}出生日期`, member.birthDate);
+      pushCopyRow(items, `${prefix}年龄`, member.age);
+      pushCopyRow(items, `${prefix}职业`, member.occupation);
     });
 
     // 动态自动探测：捕获 basicInfo 与 jobIntention 中后续新增的未知字段
@@ -500,6 +539,7 @@ function getCopyItemsForCategory(profile, category) {
   }
 
   if (category === 'qa' || category === 'intro' || category === 'all') {
+    if (profile.skillAdvantage) items.push({ label: '个人优势', val: profile.skillAdvantage, block: true });
     if (commonAnswers.selfEvaluation) items.push({ label: '问答 · 自我评价', val: commonAnswers.selfEvaluation, block: true });
     if (commonAnswers.careerGoal) items.push({ label: '问答 · 职业规划/求职目标', val: commonAnswers.careerGoal, block: true });
     if (commonAnswers.strengthsWeaknesses) items.push({ label: '问答 · 优势与不足', val: commonAnswers.strengthsWeaknesses, block: true });
@@ -520,7 +560,7 @@ function getCopyItemsForCategory(profile, category) {
       items.push({ label: 'HR沟通打招呼语', val: profile.hrGreeting.trim(), block: true });
     }
 
-    const skillText = Array.isArray(profile.skills) ? profile.skills.join('、') : (profile.skills?.skills || '');
+    const skillText = profileSkillText(profile);
     pushCopyRow(items, '技能清单', skillText);
 
     customAnswers.forEach((qa, i) => {

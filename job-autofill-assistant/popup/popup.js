@@ -643,6 +643,7 @@ async function runFillTask({ btn, mode, loadingText }) {
 
     const message = { action: 'fillForm', profile, sidePanel: true };
     if (mode) message.mode = mode;
+    if (mode === 'incremental') message.completeRows = document.getElementById('incrementalAddRows')?.checked === true;
 
     // 连通性编排 + 任务单次发送；失败抛出带 reason 的结构化错误
     const outcome = await sendTabTaskWithReady(tab, message, FILL_TIMEOUT_MS);

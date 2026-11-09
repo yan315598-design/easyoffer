@@ -95,8 +95,10 @@ var  REGION_ENTRY_FIELD_DEFS = {
   familyMembers: [
     { key: 'name', label: '姓名', pattern: /姓名|名字|成员姓名|name/i },
     { key: 'relation', label: '关系' },
+    { key: 'age', label: '年龄' },
+    { key: 'occupation', label: '职业' },
     { key: 'employer', label: '单位' },
-    { key: 'position', label: '职务' },
+    { key: 'position', label: '职务', pattern: /职务|职位/ },
     { key: 'phone', label: '电话' }
   ]
 };
@@ -131,7 +133,8 @@ var  REGION_BASIC_INFO_FIELD_PATTERNS = [
   ['registeredAddress', /户籍|户口/],
   ['maritalStatus', /婚姻|婚否|marital/],
   ['graduationDate', /毕业时间|毕业日期|^毕业$/],
-  ['currentCity', /现居|现所在|目前所在|当前所在|现居住/],
+  ['childhoodCity', /童年时所在城市/],
+  ['currentCity', /现居|现所在|目前所在|当前所在|现住地/],
   ['city', /城市|city/],
   ['state', /省份|province/],
   ['nationality', /国籍|nationality/],

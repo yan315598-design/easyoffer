@@ -135,6 +135,8 @@ async function fillForm(profile, options) {
   let filledCount = 0;
   const results = [];
   const attemptedFields = new WeakSet();
+  const processedRanges = new WeakSet();
+  const recheckFields = new Map();
   const home = familyResidence(profile.basicInfo);
   const languageEntries = profileLanguageEntries(profile);
   const languageScores = profileLanguageScores(profile, languageEntries);
@@ -145,7 +147,7 @@ async function fillForm(profile, options) {
     if (typeof prepareFormStructure === 'function') {
       task.stage = 'structure';
       await waitForFillCheckpoint(task);
-      structureResult = await prepareFormStructure(profile, { signal, mode, task });
+      structureResult = await prepareFormStructure(profile, { signal, mode, task, completeRows: opts.completeRows });
       throwIfFillCancelled(signal);
     }
     task.stage = 'declarations';
@@ -201,7 +203,7 @@ async function fillForm(profile, options) {
   );
   // 组件外壳和内部输入框只扫描一次，避免经历计数错位。
   const fields = [...new Set([...inputs].map((el) => writableBox(el)))].filter((el) =>
-    el && (isElementTrulyVisible(el) ||
+    el && (isElementTrulyVisible(el) || (el.type === 'radio' && isElementTrulyVisible(el.closest('label.tec-radio'))) ||
       (isSelectWidget(el) && isElementTrulyVisible(el.closest('.ant-select, .el-select, .rc-select, .semi-select, .arco-select')))));
 
   console.log(`[易offer] 扫描到 ${inputs.length} 个输入框`);
@@ -219,7 +221,8 @@ async function fillForm(profile, options) {
     await waitForFillCheckpoint(task);
     const detection = detectField(input);
     if (detection) detectedFields.push({ input, detection });
-    else if (isResumeEditor && input.closest('.el-form-item') && !isIgnoredInput(input) && getClosestLabelText(input)) unmappedFields.push(input);
+    else if (input.closest('[class*="form-item"],fieldset,[data-profile-section]') &&
+      !isIgnoredInput(input) && getClosestLabelText(input)) unmappedFields.push(input);
   }
   const matchedTypes = detectedFields.map(({ detection }) => detection.fieldType);
   const offerLinkEntries = collectOfferLinkCardEntries(profile, detectedFields);
@@ -227,6 +230,8 @@ async function fillForm(profile, options) {
   const hasSeparateProjAchieve = matchedTypes.includes('projectAchievements');
   const hasSeparateTechStack = matchedTypes.includes('techStack');
   const hasSeparateWorkAchieve = matchedTypes.includes('workAchievements');
+  const profileDocumentType = profile.basicInfo?.idCardType ||
+    (/^(?:\d{15}|\d{17}[\dXx])$/.test(String(profile.basicInfo?.idCard || '').trim()) ? '身份证' : '');
 
   // 多段经历智能计数追踪
   let currentProjIdx = 0;
@@ -253,9 +258,18 @@ async function fillForm(profile, options) {
   const eduList = (profile.education || []).filter((item) =>
     item && [item.school, item.major, item.degree].some((value) => String(value || '').trim())
   );
+  const educationRank = item => {
+    const level = String(item.degree || item.academicDegree || '');
+    return [/中学|高中|中专/, /大专|专科/, /本科|学士/, /硕士|MBA/i, /博士/].findIndex(pattern => pattern.test(level));
+  };
+  const topRank = Math.max(...eduList.map(educationRank));
+  const highest = eduList.filter(item => educationRank(item) === topRank);
+  const highestEducation = highest.length === 1 ? highest[0] : null;
   const familyList = (profile.familyMembers || []).filter((item) =>
-    item && [item.name, item.relation, item.employer, item.position, item.phone].some((value) => String(value || '').trim())
+    item && [item.name, item.relation, item.employer, item.position, item.phone, item.age, item.occupation].some((value) => String(value || '').trim())
   );
+  const duoyiFamilyEntries = collectDuoyiFamilyEntries(detectedFields, familyList);
+  const handledRadios = new WeakSet();
   const certificateList = (profile.certificates || []).map((item) =>
     typeof item === 'string' ? { name: item } : item
   ).filter((item) => item && [item.name, item.code, item.issuer].some((value) => String(value || '').trim()));
@@ -273,17 +287,56 @@ async function fillForm(profile, options) {
     if (!dateParts.has(value)) dateParts.set(value, parseYearMonth(value));
     return dateParts.get(value);
   };
-  for (const { input, detection } of detectedFields) {
+  const queue = typeof repeatFillFields === 'function' ? repeatFillFields(profile, detectedFields, {
+    signal, task, explicitCards: isResumeEditor, addRows: !incremental || opts.completeRows,
+    manual: structureResult?.manual || [], onAdded: () => { if (structureResult) structureResult.added++; },
+    verifyAnchor: async anchor => {
+      const until = recheckFields.get(anchor);
+      if (until > Date.now()) await sleep(until - Date.now());
+      await waitForFillCheckpoint(task);
+      const row = results.find(result => result.element === anchor && result.status === 'filled');
+      return anchor.isConnected && fieldHasValue(anchor) && (!row || !until || verifyFieldWrite(anchor, row.value));
+    }
+  }) : detectedFields;
+  for await (const { input, detection, binding } of queue) {
     task.stage = 'fields';
     await waitForFillCheckpoint(task);
     throwIfFillCancelled(signal);
     try {
       if (!input.isConnected || isIgnoredInput(input)) continue;
+      if (binding) attemptedFields.add(input);
       if (detection.confidence < FIELD_WRITE_MIN_CONFIDENCE) {
         results.push(fillResultEntry(input, detection, 'needs_review', 'low_confidence'));
         continue;
       }
       const fieldType = detection.fieldType;
+      const range = binding?.entry && /^(startDate|endDate)$/.test(binding.key) && input.closest('.ant-picker-range');
+      if (range) {
+        if (processedRanges.has(range)) continue;
+        processedRanges.add(range);
+        const endpoints = ['startDate', 'endDate'].map(key => binding.row.fields.find(field => field.key === key && range.contains(field.input)));
+        if (endpoints.every(Boolean) && endpoints[0].input !== endpoints[1].input) {
+          const fields = endpoints.map(endpoint => endpoint.input);
+          fields.forEach(field => attemptedFields.add(field));
+          const values = [binding.entry.startDate, binding.entry.endDate];
+          const hasValue = fields.some(fieldHasValue);
+          const written = !hasValue && await fillAntDateRange(fields, values, { ...opts, signal, task });
+          for (const endpoint of endpoints) {
+            const kept = hasValue && fieldHasValue(endpoint.input);
+            const status = written ? 'filled' : kept ? 'skipped_has_value' : 'needs_review';
+            const reason = written || kept ? '' : endpoint.input.hasAttribute('data-job-autofill-manual') ? 'date_precision_required' : 'range_not_committed';
+            if (written) filledCount++;
+            results.push(fillResultEntry(endpoint.input, endpoint.detection, status, reason));
+          }
+          continue;
+        }
+        results.push(fillResultEntry(input, detection, 'needs_review', 'range_not_committed'));
+        continue;
+      }
+      if (input.type === 'radio') {
+        if (handledRadios.has(input)) continue;
+        for (const radio of radioGroup(input)) handledRadios.add(radio);
+      }
 
     // 多段经历换项检测
     if (fieldType === 'projectName') {
@@ -309,8 +362,17 @@ async function fillForm(profile, options) {
       seenPatentNames++;
     }
 
-      if (input.type !== 'radio' && input.type !== 'checkbox' && fieldHasValue(input)) {
-        results.push(fillResultEntry(input, detection, 'skipped_has_value', '已有值，保持不变'));
+      const preserveExisting = binding || input.type !== 'checkbox' &&
+        (input.type !== 'radio' || incremental || input.closest('.tec-radio-group'));
+      if (preserveExisting && fieldHasValue(input)) {
+        const invalidCompetition = binding?.key === 'name' && binding?.module.section === 'awards' &&
+          getClosestLabelText(input) === '竞赛名称' && !verifyFieldWrite(input, input.value);
+        results.push(fillResultEntry(input, detection, invalidCompetition ? 'needs_review' : 'skipped_has_value',
+          invalidCompetition ? 'validation_failed' : '已有值，保持不变'));
+        continue;
+      }
+      if (binding && (!binding.entry || !binding.key)) {
+        results.push(fillResultEntry(input, detection, 'needs_review', binding.key ? 'record_ambiguous' : 'unrecognized_field'));
         continue;
       }
 
@@ -330,7 +392,8 @@ async function fillForm(profile, options) {
     const edu = (scoped?.section === 'education' ? scoped.entry : eduList[currentEduIdx]) || {};
     const eduStart = date(edu.startDate);
     const eduEnd = date(edu.endDate);
-    const family = familyList[currentFamilyIdx] || {};
+    const tableField = duoyiTableField(input);
+    const family = (tableField ? duoyiFamilyEntries.get(tableField.row)?.entry : familyList[currentFamilyIdx]) || {};
     const certificate = (scoped?.section === 'certificates' ? scoped.entry : certificateList[currentCertificateIdx]) || {};
     const paper = paperList[currentPaperIdx] || paperList[0] || {};
     const patent = patentList[currentPatentIdx] || patentList[0] || {};
@@ -339,7 +402,8 @@ async function fillForm(profile, options) {
     const isSelect = input.tagName.toLowerCase() === 'select';
 
     // 根据字段类型填充对应的值
-    switch (fieldType) {
+    if (binding) valueToFill = repeatFieldValue(binding.entry, binding.key);
+    else switch (fieldType) {
       // 基础信息
       case 'fullName':
         valueToFill = profile.basicInfo?.fullName;
@@ -368,9 +432,13 @@ async function fillForm(profile, options) {
       case 'birthDate':
         valueToFill = profile.basicInfo?.birthDate;
         break;
-      case 'idCard':
+      case 'idCard': {
+        const type = questionContainer(input)?.querySelector('.tec-select__input');
+        if (input.matches('.tec-input__inner') && type &&
+            !fieldOptionEquals(getClosestLabelText(input), widgetSelectCurrentValue(type), profileDocumentType)) break;
         valueToFill = profile.basicInfo?.idCard;
         break;
+      }
       case 'politicalStatus':
         valueToFill = profile.basicInfo?.politicalStatus;
         break;
@@ -383,6 +451,14 @@ async function fillForm(profile, options) {
       case 'graduationDate':
         valueToFill = profile.basicInfo?.graduationDate;
         break;
+      case 'highestDegree':
+      case 'highestSchool':
+      case 'highestMajor':
+      case 'highestGraduation': {
+        const key = { highestDegree:'degree', highestSchool:'school', highestMajor:'major', highestGraduation:'endDate' }[fieldType];
+        valueToFill = highestEducation?.[key];
+        break;
+      }
       case 'maritalStatus':
         valueToFill = profile.basicInfo?.maritalStatus;
         break;
@@ -401,10 +477,23 @@ async function fillForm(profile, options) {
         valueToFill = profile.basicInfo?.qq;
         break;
       case 'idCardType':
-        // 证件类型为空但证件号是大陆身份证格式（15/18 位）时可确定推断为"身份证"，否则留空不猜
-        valueToFill = profile.basicInfo?.idCardType ||
-          (/^(?:\d{15}|\d{17}[\dXx])$/.test(String(profile.basicInfo?.idCard || '').trim()) ? '身份证' : '');
+        valueToFill = profileDocumentType;
         break;
+      case 'imContactType':
+      case 'imContactAccount': {
+        const item = questionContainer(input);
+        const type = item?.querySelector('.tec-select__input');
+        const account = item?.querySelector('.tec-input__inner');
+        if (!type || !account) break;
+        if (fieldType === 'imContactType') {
+          if (!fieldHasValue(account)) valueToFill = profile.basicInfo?.wechat ? '微信号' : profile.basicInfo?.qq ? 'QQ号' : '';
+        } else {
+          const selected = widgetSelectCurrentValue(type);
+          if (/^微信(?:号)?$/.test(selected)) valueToFill = profile.basicInfo?.wechat;
+          if (/^qq(?:号)?$/i.test(selected)) valueToFill = profile.basicInfo?.qq;
+        }
+        break;
+      }
       case 'bloodType':
         valueToFill = profile.basicInfo?.bloodType;
         break;
@@ -421,9 +510,21 @@ async function fillForm(profile, options) {
             : '');
         break;
       case 'specialSkills':
-        valueToFill = profile.basicInfo?.specialSkills ||
-          (Array.isArray(profile.skills) ? profile.skills.join(', ') : '');
+        valueToFill = profileSkillText(profile, ', ');
         break;
+      case 'duoyiSkill':
+      case 'duoyiSkillProficiency': {
+        const firstSkill = profileSkillEntries(profile).find(item => item.name);
+        const skill = firstSkill?.name || String(profile.basicInfo?.specialSkills || '').split(/\r?\n|[；;]/)
+          .map(part => part.trim()).find(Boolean);
+        if (tableField?.row.sectionRowIndex !== 1 || !skill) break;
+        if (fieldType === 'duoyiSkill') valueToFill = skill;
+        else {
+          const displayedSkill = tableField.row.cells[0]?.querySelector('input')?.value.trim();
+          if (displayedSkill === skill) valueToFill = firstSkill?.proficiency || profile.basicInfo?.specialSkillProficiency;
+        }
+        break;
+      }
       case 'openToWork':
         valueToFill = profile.basicInfo?.openToWork;
         break;
@@ -506,13 +607,20 @@ async function fillForm(profile, options) {
 
       // 荣誉奖项
       case 'awards':
-        if (Array.isArray(profile.awards) && profile.awards.length) {
+        if (/^(荣誉奖项|奖项荣誉|获奖经历|获奖情况|奖励情况|获奖信息|awards)$/i.test(getClosestLabelText(input)) &&
+            Array.isArray(profile.awards) && profile.awards.length) {
           valueToFill = profile.awards.map(a => `${a.date || ''} ${a.name}${a.level ? ` (${a.level})` : ''}`.trim()).join('；');
         }
         break;
       case 'certificates':
-        valueToFill = certificate.name || certificateList.map((item) => item.name).filter(Boolean).join('；');
+        valueToFill = certificate.name;
         break;
+      case 'skillName':
+      case 'skillProficiency': {
+        const entries = profileSkillEntries(profile).filter(item => item.name);
+        if (entries.length === 1) valueToFill = entries[0][fieldType === 'skillName' ? 'name' : 'proficiency'];
+        break;
+      }
       case 'certificateCode':
         valueToFill = certificate.code;
         break;
@@ -530,6 +638,16 @@ async function fillForm(profile, options) {
         break;
       case 'familyRelation':
         valueToFill = family.relation;
+        if (tableField && /^(父亲|母亲)$/.test(familyRelationKey(valueToFill)) && /^(男|女)$/.test(profile.basicInfo?.gender)) {
+          valueToFill = familyRelationKey(valueToFill)[0] + (profile.basicInfo.gender === '男' ? '子' : '女');
+        }
+        break;
+      case 'familyAge':
+        valueToFill = family.age || (elementDateParts(family.birthDate)?.[2]
+          ? computeAgeFromBirthDate(family.birthDate, new Date()) : '');
+        break;
+      case 'familyOccupation':
+        valueToFill = family.occupation;
         break;
       case 'familyEmployer':
         valueToFill = family.employer;
@@ -590,7 +708,7 @@ async function fillForm(profile, options) {
         valueToFill = profile.basicInfo?.state;
         break;
       case 'country':
-        valueToFill = profile.basicInfo?.country;
+        valueToFill = profile.basicInfo?.country || profile.basicInfo?.nationality;
         break;
       case 'zipCode':
         valueToFill = profile.basicInfo?.zipCode;
@@ -766,9 +884,7 @@ async function fillForm(profile, options) {
 
       // 技能
       case 'skills':
-        valueToFill = (Array.isArray(profile.skills)
-          ? profile.skills.join(', ')
-          : (profile.skills?.skills || '')) || profile.basicInfo?.specialSkills;
+        valueToFill = profileSkillText(profile, ', ');
         break;
 
       // 自我介绍
@@ -835,6 +951,9 @@ async function fillForm(profile, options) {
         if (parts) valueToFill = [valueToFill, ...parts].filter(Boolean).join(' / ');
       }
       if (valueToFill !== null && valueToFill !== undefined && String(valueToFill).trim() !== '') {
+        if ((fieldType === 'rank' || (binding?.module?.section === 'education' && binding.key === 'rank')) && isSelectWidget(input)) {
+          valueToFill = educationRankOptionValue(getClosestLabelText(input), valueToFill);
+        }
         attemptedFields.add(input);
         const fieldController = new AbortController();
         const abortField = () => fieldController.abort();
@@ -844,6 +963,7 @@ async function fillForm(profile, options) {
             fillField(input, valueToFill, {
               signal: fieldController.signal,
               task,
+              deferVerification: (field, until) => recheckFields.set(field, until),
               openTimeoutMs: opts.openTimeoutMs || 1200
             }),
             opts.fieldTimeoutMs || 8000,
@@ -857,11 +977,13 @@ async function fillForm(profile, options) {
           } else if (outcome.value) {
             filledCount++;
             clearManualHint(input);
-            results.push(fillResultEntry(input, detection, 'filled', '', valueToFill));
+            const confirmedValue = getClosestLabelText(input) === '竞赛名称' ? input.value : valueToFill;
+            results.push(fillResultEntry(input, detection, 'filled', '', confirmedValue));
             input.style.backgroundColor = '#e8f5e9';
             input.style.outline = '2px solid #4caf50';
           } else {
-            const reason = input.getAttribute('data-job-autofill-manual') ? 'date_precision_required' : 'write_failed_or_option_not_found';
+            const reason = input.getAttribute('data-easyoffer-write-reason') ||
+              (/请确认(?:具体|完整)日期/.test(input.getAttribute('data-job-autofill-manual') || '') ? 'date_precision_required' : 'write_failed_or_option_not_found');
             results.push(fillResultEntry(input, detection, 'needs_review', reason, valueToFill));
           }
         } finally {
@@ -908,6 +1030,20 @@ async function fillForm(profile, options) {
       if (error?.name === 'AbortError') throw error;
       results.push(fillResultEntry(null, null, 'failed', `附件：${error?.message || error}`));
     }
+  }
+
+  if (recheckFields.size) {
+    const remaining = Math.max(...recheckFields.values()) - Date.now();
+    if (remaining > 0) await sleep(remaining);
+    await waitForFillCheckpoint(task);
+  }
+  for (const row of results) {
+    if (row.status !== 'filled' || !recheckFields.has(row.element) || verifyFieldWrite(row.element, row.value)) continue;
+    row.status = 'needs_review';
+    row.reason = row.element.getAttribute('data-easyoffer-write-reason') || 'value_reset';
+    row.element.style.removeProperty('outline');
+    row.element.style.removeProperty('background-color');
+    filledCount--;
   }
 
   console.log(`[易offer] 填充完成: ${filledCount} 个字段`);

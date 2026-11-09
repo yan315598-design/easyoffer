@@ -26,10 +26,10 @@ var  FIELD_ALIASES = [
   ['ethnicity', ['民族']],
   ['hometown', ['籍贯']],
   ['sourcePlace', ['生源地']],
-  ['registeredAddress', ['户口所在地', '户籍所在地', '户籍地', '户籍']],
+  ['registeredAddress', ['户口所在地', '户籍所在地', '户口地', '户籍地', '户籍']],
   ['graduationDate', ['预计毕业时间', '毕业时间', '毕业年月', '毕业年份']],
   ['maritalStatus', ['婚姻状况', '婚姻情况', '婚否', 'maritalstatus']],
-  ['currentCity', ['现居住城市', '现居住地', '目前所在地', '现所在地', '现居地']],
+  ['currentCity', ['现居住城市', '现居住地', '目前所在地', '现所在地', '现居地', '现住地']],
   ['emergencyContact', ['紧急联系人姓名', '紧急联络人', '紧急联系人']],
   ['emergencyRelation', ['与本人关系', '紧急联系人关系', '联系人关系']],
   ['emergencyPhone', ['紧急联系人电话', '紧急联系人手机', '紧急联系电话']],
@@ -131,7 +131,7 @@ var  SECTION_SHORT_ALIASES = {
     ['projectName', ['名称', '项目']],
     ['projectDescription', ['内容', '描述', '介绍', '简介', '概述', '详细信息']],
     ['projectResponsibilities', ['职责', '负责']],
-    ['projectRole', ['角色', '担任']],
+    ['projectRole', ['角色', '担任', '职务']],
     ['projectStartDate', ['开始时间', '开始日期', '起始时间']],
     ['projectEndDate', ['结束时间', '结束日期', '截止时间']]
   ],
@@ -302,6 +302,31 @@ function detectField(element) {
     ? features.placeholder : (features.label || features.placeholder));
   const section = features.section;
   const rawLabel = String(features.label || '').trim();
+  const tableField = duoyiTableField(element);
+  if (tableField) return finish(tableField.type, 'sectionAlias');
+  const tecItem = element.closest('.tec-form-item');
+  const tecSelect = element.matches('.tec-select__input');
+  if (tecItem && tecSelect && /^(证件号|证件号码)$/.test(rawLabel) && tecItem.querySelector('.tec-input__inner')) {
+    return finish('idCardType', 'sectionAlias');
+  }
+  if (tecItem && rawLabel === 'im联系方式' && tecItem.querySelector('.tec-select__input') && tecItem.querySelector('.tec-input__inner')) {
+    if (tecSelect) return finish('imContactType', 'sectionAlias');
+    if (element.matches('.tec-input__inner')) return finish('imContactAccount', 'sectionAlias');
+  }
+  if (tecItem && (rawLabel === '宣讲城市' || rawLabel === '工作地点' && section !== 'work' ||
+      element.type === 'radio' && /^(微博|知乎|豆瓣|小红书|b站)地址$/.test(rawLabel))) return null;
+  const recordField = {
+    '最高学历': 'highestDegree', '最高学历学校': 'highestSchool', '最高学历院校': 'highestSchool',
+    '最高学历专业': 'highestMajor', '最高学历毕业日期': 'highestGraduation', '最高学历毕业时间': 'highestGraduation',
+    '技能证书': 'certificates', '证书名称': 'certificates', '竞赛名称': 'extended:awards:name',
+    '荣誉名称': 'extended:awards:name', '竞赛获奖等级': 'extended:awards:grade', '竞赛获奖时间': 'extended:awards:date',
+    '技能类别': 'skillName', '技能名称': 'skillName', '国家地区': 'country', '国家/地区': 'country', '国家／地区': 'country'
+  }[rawLabel];
+  if (recordField) return finish(recordField, 'sectionAlias');
+  if (/^(掌握程度|熟练程度)$/.test(rawLabel)) {
+    if (section === 'skill') return finish('skillProficiency', 'sectionAlias');
+    if (section !== 'language') return null;
+  }
 
   // OfferLink 基础信息中的地址是独立语义，不能进入学校名称、家庭成员或通用地址规则。
   const directAddress = {
@@ -313,6 +338,7 @@ function detectField(element) {
     '家庭所在区县': 'extended:basicInfo:homeDistrict',
     '出生地': 'extended:basicInfo:birthPlace',
     '出生地点': 'extended:basicInfo:birthPlace',
+    '童年时所在城市': 'extended:basicInfo:childhoodCity',
     '当前所在地': 'currentCity',
     '现居住地': 'currentCity',
     '学校所在地区': 'extended:education:schoolProvince',
@@ -435,13 +461,19 @@ function matchFieldType(element) {
 function classifySectionTitle(text) {
   const t = String(text || '').replace(/\s+/g, '').slice(0, 24);
   if (!t || t.length > 18) return '';
+  const english = { education: 'edu', educationhistory: 'edu', workexperience: 'work', internships: 'work',
+    employmenthistory: 'work', projects: 'project', awards: 'award', competitionawards: 'award', otherhonors: 'award',
+    skills: 'skill', technicalskills: 'skill', certificates: 'certificate', languages: 'language',
+    familymembers: 'family', publications: 'paper', patents: 'patent', training: 'training' }[t.toLowerCase()];
+  if (english) return english;
   if (/家庭成员|家庭情况|家属信息|亲属信息|直系亲属|家庭信息/.test(t)) return 'family';
   if (/英语能力|外语能力|语言能力|语言证书|英语水平/.test(t)) return 'language';
-  if (/获奖经历|奖惩情况|荣誉奖项|奖项荣誉|获奖情况/.test(t)) return 'award';
+  if (/获奖经历|奖惩情况|荣誉奖项|奖项荣誉|获奖情况|竞赛获奖|竞赛奖励|其他荣誉|奖学金证书/.test(t)) return 'award';
   if (/在校职务|干部任职|学生干部|社团职务|校园职务/.test(t)) return 'campus';
   if (/^(校园活动|校园活动经历|校内实践)$/.test(t)) return 'campusActivity';
   if (/培训经历|培训信息|培训课程|职业培训/.test(t)) return 'training';
-  if (/资格证书|职业证书|证书信息|所获证书/.test(t)) return 'certificate';
+  if (/资格证书|职业证书|证书信息|所获证书|技能证书/.test(t)) return 'certificate';
+  if (/^(it技能|技能|技能特长|专业技能)$/i.test(t)) return 'skill';
   if (/教育经历|教育背景|教育信息|学习经历|学历信息/.test(t) || (/教育|学历|院校/.test(t) && !/最高学历/.test(t))) return 'edu';
   if (/项目经历|项目经验|项目信息/.test(t) || (/项目/.test(t) && !/项目名称|项目角色|项目描述|项目职责|项目成果/.test(t))) return 'project';
   if (/工作经历|实习经历|工作经验|任职经历|工作信息|实习信息/.test(t) || /^(实习|工作|任职)$/.test(t)) return 'work';
@@ -462,7 +494,7 @@ function nearestSectionKind(el) {
   const explicitKind = {
     education: 'edu', workExperience: 'work', projects: 'project', familyMembers: 'family',
     certificates: 'certificate', languageCertificates: 'language', awards: 'award', campusPositions: 'campus',
-    trainings: 'training', campusActivities: 'campusActivity', papers: 'paper', patents: 'patent'
+    trainings: 'training', campusActivities: 'campusActivity', papers: 'paper', patents: 'patent', skills: 'skill'
   }[explicit || ''];
   if (explicitKind) return explicitKind;
 

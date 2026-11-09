@@ -69,8 +69,8 @@ body { font-size: 14px; }
   border: 1px solid var(--yy-input-border);
   border-radius: 8px;
 }
-.sidebar-categories { display: flex; gap: 5px; overflow-x: auto; margin: 10px -3px 0; padding: 3px 3px 6px; }
-.sidebar-categories button, .sidebar-value button {
+.sidebar-categories { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 0; padding-bottom: 6px; }
+.sidebar-categories button, .sidebar-value button, .sidebar-record header button, .sidebar-preview button {
   min-height: 32px;
   padding: 4px 9px;
   font: inherit;
@@ -99,7 +99,7 @@ body { font-size: 14px; }
   border-top: 1px solid var(--yy-border);
   overflow-wrap: anywhere;
 }
-.sidebar-value h2 { font-size: 12px; font-weight: 650; color: var(--yy-text-2); }
+.sidebar-value h3 { font-size: 12px; font-weight: 650; color: var(--yy-text-2); }
 .sidebar-value > :is(p, details) { grid-column: 1; }
 .sidebar-value summary { cursor: pointer; color: var(--yy-primary-text); font-size: 13px; }
 .sidebar-value p { white-space: pre-wrap; }
@@ -112,6 +112,20 @@ body { font-size: 14px; }
   border-color: var(--yy-primary-soft-border);
 }
 .sidebar-long-value { margin-top: 5px; }
+.sidebar-quick-tools, .sidebar-add-rows { color: var(--yy-text-2); font-size: 12px; }
+.sidebar-quick-tools { display: flex; flex-wrap: wrap; gap: 5px 9px; align-items: center; }
+.sidebar-quick-tools input, .sidebar-add-rows input { vertical-align: middle; accent-color: var(--yy-primary); }
+.sidebar-record { margin-top: 9px; border: 1px solid var(--yy-border); border-radius: 9px; overflow: hidden; }
+.sidebar-record header { padding: 8px 9px; display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--yy-surface-2); }
+.sidebar-record h2 { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.sidebar-record .sidebar-value { padding: 7px 8px; }
+.sidebar-preview { margin: auto; width: min(400px, calc(100% - 20px)); max-height: 85vh; overflow: auto; padding: 16px; background: var(--yy-surface); color: var(--yy-text); border: 1px solid var(--yy-border); border-radius: 12px; }
+.sidebar-preview::backdrop { background: #15213966; }
+.sidebar-preview p, .sidebar-preview ul { margin: 9px 0; overflow-wrap: anywhere; }
+.sidebar-preview ul { padding-inline-start: 20px; }
+.sidebar-preview li { margin: 5px 0; white-space: pre-wrap; }
+.sidebar-preview form { display: flex; justify-content: end; gap: 6px; }
+.sidebar-preview button[value="write"] { background: var(--yy-primary-soft); color: var(--yy-primary-text); font-weight: 700; }
 .sidebar-task-controls { display: flex; gap: 8px; }
 .sidebar-result {
   display: flex;

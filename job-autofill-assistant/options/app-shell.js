@@ -19,13 +19,15 @@
     ], '密钥被拒绝时先检查是否复制了多余的空格。连接正常但模型不可用时，核对模型 ID 和密钥的权限。'],
     ['fill', '一键、增量与选区填入', '先在侧栏选对简历。网页上已经手填了一部分时，优先用「增量填入」。', [
       '刚打开空表单时，可以点「一键填入」。填写完成后，检查网页标红的必填项和附件上传状态。',
-      '只想补空白项时点「增量填入」。核对招聘网站已有的内容，再手动补齐未匹配到的字段。',
+      '只想补空白项时点「增量填入」。需要把简历中剩余的经历也加到网页时，先勾选「增量填入时也补建条目」。',
       '只填某一段教育或实习经历时点「选区填入」。在网页上拖框，选择对应简历条目，再点「立即填入」。按 Esc 可以退出选区。'
     ], '遇到一个难填的字段，可以转到「资料速查」逐项补。招聘网站的保存和提交按钮由你点击。'],
     ['quick', '资料速查与点选补填', '适合补一个字段，比如毕业院校，也可以把一整段项目职责复制到长文本框。', [
       '在网页上点一下要填的输入框，或用 Tab 移到那个字段。看到侧栏显示「填入目标」后，先核对字段名。',
       '在「资料速查」输入关键词。搜索会跨分类查找，比如搜「导师」「生源地」或项目名称。长文本可以先点「查看全文」。',
-      '点击资料旁边的「填入」，再看网页有没有收到内容。如果只想把资料放进剪贴板，点击「复制」。'
+      '点击资料旁边的「填入」，再看网页有没有收到内容。只想把资料放进剪贴板时，点击「复制」。',
+      '想补同一条经历里的多个字段时，先在网页选中那一行，再点侧栏的「预览整条」。核对目标行和待填内容后确认。已有值会保留。',
+      '找不到停用模块里的内容时，勾选「显示停用模块资料」，可以搜索和复制。'
     ], '切换过岗位或表单步骤后，请重新点选字段。给其他扩展的资料页填写时，在易offer侧栏搜索并复制，再到目标输入框按 Ctrl+V 或 ⌘V。'],
     ['date', '日期选择与补全', '点日期框打开月历。只记得年月时，可以先选到对应月份，再点「仅保存年月」。', [
       '点月历标题中的年份或月份可以快速跳转。用方向键在日历中移动，按 Enter 选中，按 Esc 关闭。',
@@ -53,9 +55,9 @@
       '表格适合找岗位，看板适合扫一遍当前进度，仪表盘显示阶段分布和投递节奏。进入「面试中」后，可以选择待一面、待二面或待终面。',
       '面试结束后可注明结果，暂时不用跟进的岗位也可以归档。要恢复记录，用「已归档」筛选找到它，再点「恢复」。'
     ], '如果抽屉没有识别出公司或职位，手动补上即可。旧版带「待核实」标记的申请，请核实实际投递情况后再确认。'],
-    ['backup', '备份、恢复与 CSV', '换设备前，请先在「设置」里导出完整 JSON。只想带走岗位清单时，可以在工作台导出 CSV。', [
-      '在「设置」打开「数据备份与恢复」。查看导出是否包含 API Key，再按需要选择。保存好下载的 JSON 文件。',
-      '恢复完整备份前，建议先给当前浏览器再做一份备份。选中要恢复的 JSON，阅读确认信息后再继续。',
+    ['backup', '备份、恢复与 CSV', '换设备、卸载扩展或移动安装目录前，请确认最新备份已保存。只想带走岗位清单时，可以在工作台导出 CSV。', [
+      '打开「设置 → 数据备份与恢复」。可备份全部资料，也可选择简历和附件。授权独立目录后，保存修改会自动留下快照。',
+      '导入前核对新增资料和同 ID 冲突。已有简历默认跳过，可以按份选择更新。',
       '在工作台导入 CSV 时，先核对预览。检查同 ID 冲突和同公司同职位的提示，再决定是否更新或作为独立记录保留。'
     ], '恢复 JSON 后，可以打开「我的简历」和「求职工作台」各抽查一条记录。CSV 只含工作台记录。']
   ];
@@ -129,7 +131,8 @@
     key.parentElement.append(toggle);
     const appearance=node('section','shell-card'); appearance.append(node('h2','','外观')); const theme=node('button','shell-button','切换浅色 / 深色'); theme.onclick=()=>document.getElementById('themeToggle').click(); appearance.append(theme); settings.append(appearance);
     const backup=node('section','shell-card'); backup.id='settings-backup'; backup.tabIndex=-1;
-    backup.append(node('h2','','数据备份与恢复'),node('p','','完整备份包含简历、附件、设置和投递记录。恢复将替换本地资料。'));
+    backup.append(node('h2','','数据备份与恢复'),node('p','','可备份全部资料，或按简历选择导出。导入前可核对新增资料和同 ID 冲突。'),
+      node('p','','更换浏览器、卸载扩展或移动安装目录前，请把最新备份存到独立目录。快照包含简历和附件，请存到自己的资料目录，避免放进公开仓库。'));
     const label=node('label'); const check=node('input'); check.type='checkbox';check.id='backupIncludeKey';label.append(check,document.createTextNode(' 在备份中包含 API Key'));backup.append(label);
     const keyStatus = node('p', '', '本次导出不含 API Key');
     keyStatus.setAttribute('role', 'status');
@@ -137,7 +140,72 @@
       keyStatus.textContent = check.checked ? '本次导出将包含当前保存的 API Key' : '本次导出不含 API Key';
     });
     backup.append(keyStatus);
-    backup.append(document.querySelector('.rail-data-actions'),document.getElementById('importBackupFile'));settings.append(backup);
+    const actions = document.querySelector('.rail-data-actions');
+    actions.querySelector('#exportBackupBtn span').textContent = '全部备份';
+    const partial = node('button','btn-nav-sub','选择内容导出'); partial.type = 'button';
+    partial.onclick = () => exportBackup('partial');
+    actions.insertBefore(partial, document.getElementById('importBackupBtn'));
+    backup.append(actions,document.getElementById('importBackupFile'));settings.append(backup);
+    const local = node('div', 'backup-directory-card');
+    const localStatus = node('p', '', '正在检查备份目录…'); localStatus.setAttribute('role', 'status');
+    const localActions = node('div', 'backup-directory-actions');
+    let currentHandle;
+    const renderBackupStatus = async () => {
+      const status = (await chrome.storage.local.get('easyofferBackupStatus')).easyofferBackupStatus;
+      const handle = await backupDirectory.get();
+      currentHandle = handle;
+      const granted = handle && await handle.queryPermission({mode:'readwrite'}) === 'granted';
+      const last = status?.completedAt ? `最近成功备份 ${new Date(status.completedAt).toLocaleString()}。` : '尚未成功写入快照。';
+      localStatus.textContent = handle ? `${handle.name} · ${last}${!granted ? '请重新授权备份目录。' : status?.error ? `有改动待备份。${status.error}` : status?.dirty ? '有改动待备份。' : ''}` : '选择独立目录后，保存修改时自动写入快照。';
+      saveSnapshot.disabled = !handle;
+      forget.disabled = !handle;
+    };
+    const refreshBackup = () => renderBackupStatus().catch(() => { localStatus.textContent = '无法读取备份目录，可以使用 JSON 下载。'; });
+    const localButton = (label, action) => {
+      const button = node('button','shell-button',label); button.type = 'button';
+      button.onclick = async () => {
+        button.disabled = true;
+        try { await action(); }
+        catch (error) { if (error.name !== 'AbortError') showToast(error.message, 'error'); }
+        finally { button.disabled = false; await refreshBackup(); }
+      };
+      localActions.append(button);
+      return button;
+    };
+    const writeSnapshot = async () => {
+      const result = await sendMessage({ action: 'writeSnapshot' });
+      if (!result?.success) throw new Error(result?.error || '备份失败');
+      showToast('本地快照已保存', 'success');
+    };
+    const pick = localButton('选择备份目录', async () => {
+      const handle = await showDirectoryPicker({ id:'easyoffer-backup', mode:'readwrite' });
+      await backupDirectory.set(handle);
+      await writeSnapshot();
+    });
+    const saveSnapshot = localButton('立即备份', async () => {
+      const handle = currentHandle;
+      if (!handle || await handle.requestPermission({mode:'readwrite'}) !== 'granted') throw new Error('请授权备份目录');
+      await writeSnapshot();
+    });
+    const restore = localButton('从目录恢复', async () => {
+      const handle = await showDirectoryPicker({ id:'easyoffer-backup', mode:'read' });
+      const files = [];
+      for await (const file of handle.values()) if (file.kind === 'file' && backupDirectory.isSnapshot(file.name)) files.push(file);
+      files.sort((a,b) => b.name.localeCompare(a.name));
+      if (!files.length) throw new Error('此目录没有易offer快照');
+      const selected = await backupChoiceDialog('选择本地快照', '选择一份快照继续预览。', files.map((file,index) => ({ key: file.name, label: file.name, checked: index === 0 })), '预览');
+      if (!selected) return;
+      const matches = files.filter(file => selected[file.name]);
+      if (matches.length !== 1) throw new Error('请选择一份快照');
+      await importBackup(await matches[0].getFile());
+    });
+    const forget = localButton('停止自动备份', async () => { await backupDirectory.clear(); });
+    pick.disabled = restore.disabled = typeof showDirectoryPicker !== 'function';
+    local.append(node('h3','','本地备份目录'), localStatus, localActions); backup.append(local);
+    chrome.storage.onChanged?.addListener((changes, area) => {
+      if (area === 'local' && (changes.easyofferBackupStatus || changes.jobAutofillData || changes.yanyuSubmissionsV1)) void refreshBackup();
+    });
+    void refreshBackup();
     const save = node('button', 'shell-button', '保存设置');
     save.type = 'button';
     const status = node('span', 'settings-save-status');

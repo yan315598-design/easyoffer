@@ -109,7 +109,7 @@ function regionCategoryEntries(profile, category) {
     return value && typeof value === 'object' && !Array.isArray(value) ? [value] : [];
   }
   if (category === 'skills') {
-    const skills = Array.isArray(profile.skills) ? profile.skills : (profile.skills?.skills || '');
+    const skills = Array.isArray(profile.skills) ? profileSkillEntries(profile).map(item => item.name) : (profile.skills?.skills || '');
     return (Array.isArray(skills) ? skills.length : String(skills || '').trim()) ? [{ skills }] : [];
   }
   if (category === 'introTemplates') {

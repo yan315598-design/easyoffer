@@ -942,16 +942,15 @@
               </svg>
             </div>
             <div>
-              <h2 class="section-title">技能特长与自我介绍</h2>
-              <p class="section-subtitle">专业标签、个性化自我介绍与简历附件</p>
+              <h2 class="section-title">IT 技能</h2>
+              <p class="section-subtitle">搜索工具或技术名称，每条记录选择一项技能和对应的掌握程度。</p>
             </div>
           </div>
         </div>
 
         <div class="form-group">
-          <label>技能标签 <span class="label-tip">（输入技能后按回车 Enter 自动添加标签）</span></label>
-          <input type="text" id="skillInput" placeholder="例如: React, TypeScript, Go, 算法优化 (输入后按回车)" class="skill-input">
-          <div id="skillsList" class="tags-list"></div>
+          <div id="skillsList" class="item-list"></div>
+          <button type="button" id="addSkillBtn" class="btn-add-item btn-add-entry">＋ 添加 IT 技能</button>
         </div>
 
         <div class="form-group">
@@ -1069,6 +1068,7 @@
   <script src="../scripts/profile-create-dialog.js"></script>
   <script src="../scripts/profile-schema.js"></script>
   <script src="../scripts/profile-completeness.js"></script>
+  <script src="../scripts/backup-directory.js"></script>
   <script src="../scripts/resume-parser.js"></script>
   <script src="options.js"></script>
   <script src="date-controls.js"></script>
