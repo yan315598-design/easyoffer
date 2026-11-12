@@ -1,19 +1,20 @@
+/* 导航变量全部映射到 brand.css 的共享 yy 令牌，不再单独维护一套蓝。 */
 :root {
-  --shell-paper: #fff;
-  --shell-bg: #f5f7fb;
-  --shell-ink: #17243b;
-  --shell-muted: #5d6a80;
-  --shell-line: #dfe6f1;
-  --shell-blue: #2858e9;
-  --shell-nav-height: 68px;
+  --shell-paper: var(--yy-surface, #fff);
+  --shell-bg: var(--yy-bg, #f4f7fb);
+  --shell-ink: var(--yy-text-1, #152238);
+  --shell-muted: var(--yy-text-2, #52627a);
+  --shell-line: var(--yy-border, #dce5f0);
+  --shell-blue: var(--yy-primary, #2858e9);
+  --shell-nav-height: 72px;   /* 桌面单行导航真实高度 */
 }
 :root[data-theme="dark"] {
-  --shell-paper: #1c2536;
-  --shell-bg: #131b29;
-  --shell-ink: #edf1fa;
-  --shell-muted: #a6b2ca;
-  --shell-line: #354056;
-  --shell-blue: #a0b3ff;
+  --shell-paper: var(--yy-surface, #1c2536);
+  --shell-bg: var(--yy-bg, #131b29);
+  --shell-ink: var(--yy-text-1, #edf1fa);
+  --shell-muted: var(--yy-text-2, #a6b2ca);
+  --shell-line: var(--yy-border, #354056);
+  --shell-blue: var(--yy-primary-text, #9db8ff);   /* 深色下导航文字用亮化 cobalt 保证对比度 */
 }
 body { background: var(--shell-bg); color: var(--shell-ink); }
 .backup-directory-card { display: grid; gap: 9px; margin-top: 14px; padding: 14px; border: 1px solid var(--shell-line); border-radius: 10px; background: var(--shell-bg); }
@@ -30,8 +31,7 @@ body { background: var(--shell-bg); color: var(--shell-ink); }
 .backup-directory-actions button:disabled { opacity: .46; cursor: default; }
 .ambient-glow { display: none; }
 .navbar {
-  height: auto;
-  min-height: var(--shell-nav-height);
+  height: var(--shell-nav-height);
   padding: 0 clamp(12px, 3vw, 40px);
   background: var(--shell-paper);
   border-bottom: 1px solid var(--shell-line);
@@ -51,49 +51,60 @@ body { background: var(--shell-bg); color: var(--shell-ink); }
   display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
+  min-width: 0;
   text-decoration: none;
 }
-.nav-brand .nav-logo { width: 31px; height: 31px; }
+.nav-brand .nav-logo { width: 32px; height: 32px; flex: none; }
 .nav-brand .nav-title-en { color: var(--shell-blue); margin-inline-end: 5px; }
-.nav-brand .nav-title { white-space: nowrap; }
+.nav-brand .nav-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;   /* 320/390 下超长时截断次要描述，不改 DOM */
+  white-space: nowrap;
+}
 .nav-right { justify-self: end; }
 .nav-tabs-pill {
   display: flex;
   flex-wrap: nowrap;
-  gap: clamp(15px, 2.1vw, 34px);
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   margin: 0;
   padding: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow-x: auto;         /* 单行标签，窄屏横向滚动而不是换行 */
+  scrollbar-width: none;
   white-space: nowrap;
   background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
+.nav-tabs-pill::-webkit-scrollbar { display: none; }
 .nav-tabs-pill :is(.nav-tab-btn, .shell-link) {
   flex: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  min-height: var(--shell-nav-height);
+  justify-content: center;
+  min-height: 40px;
   margin: 0;
-  padding: 0 3px;
+  padding: 0 14px;
   background: transparent;
   color: var(--shell-muted);
   border: 0;
-  border-bottom: 3px solid transparent;
-  border-radius: 0;
+  border-radius: 9px;
   box-shadow: none;
   font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
-.nav-tabs-pill :is(.nav-tab-btn, .shell-link):hover { color: var(--shell-blue); text-decoration: none; }
-.nav-tabs-pill .active { color: var(--shell-blue); border-bottom-color: var(--shell-blue); }
-.nav-tabs-pill :focus-visible { outline: 2px solid var(--shell-blue); outline-offset: -4px; }
+.nav-tabs-pill :is(.nav-tab-btn, .shell-link):hover { color: var(--shell-blue); background: var(--yy-surface-2); text-decoration: none; }
+.nav-tabs-pill :is(.nav-tab-btn.active, .shell-link.active) { color: var(--shell-blue); background: var(--yy-primary-soft); }   /* 当前页：浅蓝底标签（同特异性下靠后，hover 不冲掉 active 底色） */
+.nav-tabs-pill :is(.nav-tab-btn, .shell-link):active { background: var(--yy-surface-active); }
+.nav-tabs-pill :is(.nav-tab-btn, .shell-link):focus-visible { outline: 2px solid var(--shell-blue); outline-offset: -2px; border-radius: 9px; }
 .tab-icon { display: none; }
 .shell-page { max-width: 1260px; margin: 22px auto 60px; color: var(--shell-ink); }
 .shell-page[hidden], .shell-page [hidden] { display: none !important; }
@@ -150,7 +161,7 @@ body { background: var(--shell-bg); color: var(--shell-ink); }
 .help-steps { display: grid; gap: 10px; margin: 17px 0 20px; padding-inline-start: 1.6em; line-height: 1.75; }
 .help-steps li { padding-inline-start: 5px; }
 .help-steps li::marker { color: var(--shell-blue); font-weight: 700; }
-.help-tip { padding: 12px 14px; border-radius: 7px; border-inline-start: 3px solid var(--shell-blue); background: var(--shell-bg); }
+.help-tip { padding: 12px 14px; border-radius: 7px; border-inline-start: 1px solid var(--shell-blue); background: var(--shell-bg); }
 .help-tip h3 { margin-bottom: 3px; font-size: 13px; color: var(--shell-ink); }
 .shell-page .section { margin-bottom: 20px; }
 body[data-app-page="profile"] #section-ai, body:not([data-app-page="profile"]) #view-profile { display: none !important; }
@@ -188,14 +199,34 @@ body[data-app-page="profile"] #section-ai, body:not([data-app-page="profile"]) #
 .module-tile strong { font-size: 14px; }
 .module-tile small { grid-column: 2; color: var(--shell-muted); font-size: 12px; }
 
+/* 移动导航（<=850px）：第一行品牌 + 主题切换，第二行可横向滚动的单行标签。
+   --shell-nav-height 必须等于两行真实总高度：品牌行 52px + 标签行 44px + 下边框 1px ≈ 98px。 */
 @media (max-width: 850px) {
-  :root { --shell-nav-height: 94px; }
+  :root { --shell-nav-height: 98px; }
+  .navbar { height: auto; min-height: var(--shell-nav-height); }
   .nav-container { grid-template-columns: minmax(0, 1fr) auto; }
-  .nav-brand { min-height: 49px; }
+  .nav-brand { min-height: 52px; }
   .nav-right { grid-column: 2; grid-row: 1; width: auto; }
-  .nav-tabs-pill { grid-column: 1 / -1; grid-row: 2; width: 100%; gap: 20px; }
-  .nav-tabs-pill :is(.nav-tab-btn, .shell-link) { min-height: 43px; font-size: 13px; }
+  .navbar .btn-nav-icon { width: 44px; height: 44px; }   /* 主题切换触屏目标 >=44px */
+  .nav-tabs-pill { grid-column: 1 / -1; grid-row: 2; width: 100%; gap: 4px; }
+  .nav-tabs-pill :is(.nav-tab-btn, .shell-link) { min-height: 44px; padding: 0 12px; font-size: 13.5px; }
   .help-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .help-toc { position: static; display: flex; gap: 12px; flex-wrap: wrap; }
   .help-category + .help-category { margin-top: 0; }
+}
+
+@media (max-width: 480px) {
+  .nav-tabs-pill { gap: 2px; }
+  .nav-tabs-pill :is(.nav-tab-btn, .shell-link) {
+    padding-inline: 8px;
+    font-size: 12.5px;
+  }
+}
+
+@media (max-width: 360px) {
+  .nav-tabs-pill { gap: 0; }
+  .nav-tabs-pill :is(.nav-tab-btn, .shell-link) {
+    padding-inline: 6px;
+    font-size: 12px;
+  }
 }

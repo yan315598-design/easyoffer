@@ -1,7 +1,8 @@
-/* 英文用本机 Arial；中文用插件内嵌的 Noto Sans SC（OFL，见 LICENSE.txt）。 */
+/* 拉丁字符优先使用本机 Aptos / Segoe UI Variable / Segoe UI，最终兜底 Arial；
+   中文用插件内嵌的 Noto Sans SC（OFL，见 LICENSE.txt）。无网络字体，仅 400/600 两档真实字重。 */
 @font-face {
   font-family: "App UI";
-  src: local("Arial");
+  src: local("Aptos"), local("Segoe UI Variable Text"), local("Segoe UI Variable"), local("Segoe UI"), local("Arial");
   unicode-range: U+0000-024F, U+1E00-1EFF, U+2000-206F, U+20A0-20CF, U+2100-214F;
 }
 

@@ -2,8 +2,8 @@
    yanyu网申填写助手 - 品牌设计系统（共享 Design Tokens）
    ----------------------------------------------------------------------------
    popup 与 options 页面共同引用的唯一变量来源：
-   - 主色 indigo #4f46e5，强调色 cyan #06b6d4
-   - 浅色为中性冷灰底 + 白色卡片；深色为低饱和蓝黑 + 深灰卡片
+   - 主色 cobalt #2858E9（hover #1F49C7），点缀色 warm #E9A23B 仅少量使用
+   - 浅色为冷调浅蓝灰底 + 白色卡片；深色为低饱和蓝黑 + 深灰卡片
    - 统一字体、间距、圆角、阴影、焦点态与 reduced-motion 降级
    页面引用顺序（brand.css 必须在页面私有样式之后加载，以便回填兼容变量）：
      <link rel="stylesheet" href="options.css">
@@ -47,35 +47,36 @@
 :root,
 [data-theme="light"] {
   /* 背景与表面 */
-  --yy-bg: #f4f6fa;              /* 页面底色：浅中性冷灰 */
+  --yy-bg: #f4f7fb;              /* 页面底色：冷调浅蓝灰 */
   --yy-surface: #ffffff;         /* 卡片 */
-  --yy-surface-2: #eef1f7;       /* 嵌套块 / 输入框底 */
-  --yy-surface-hover: #e7ebf4;
-  --yy-surface-active: #dfe4f0;
-  --yy-nav-bg: rgba(244, 246, 250, 0.92);
+  --yy-surface-2: #edf2f9;       /* 嵌套块 / 输入框底 */
+  --yy-surface-hover: #e4ebf5;
+  --yy-surface-active: #dae4f2;
+  --yy-nav-bg: rgba(244, 247, 251, 0.92);
   --yy-dropdown-bg: #ffffff;
 
   /* 描边 */
-  --yy-border: #e3e7f0;
-  --yy-border-strong: #ccd3e3;
-  --yy-input-border: #d6dce9;
-  --yy-input-border-focus: #4f46e5;
+  --yy-border: #dce5f0;
+  --yy-border-strong: #c6d3e8;
+  --yy-input-border: #d2ddec;
+  --yy-input-border-focus: #2858e9;
 
   /* 文字 */
-  --yy-text-1: #171b26;
-  --yy-text-2: #4b5368;
-  --yy-text-3: #8a92a8;
-  --yy-text-faint: #b9c0d1;
+  --yy-text-1: #152238;
+  --yy-text-2: #52627a;
+  --yy-text-3: #7f8da6;
+  --yy-text-faint: #b7c2d6;
 
-  /* 品牌主色（indigo） */
-  --yy-primary: #4f46e5;
-  --yy-primary-hover: #4338ca;
-  --yy-primary-active: #3730a3;
+  /* 品牌主色（cobalt） */
+  --yy-primary: #2858e9;
+  --yy-primary-hover: #1f49c7;
+  --yy-primary-active: #17399e;
   --yy-on-primary: #ffffff;
-  --yy-primary-text: #4f46e5;                     /* 浅底上的主色文字 */
-  --yy-primary-soft: #eef0fe;                      /* 主色浅底 */
-  --yy-primary-soft-border: #d8dcfb;
-  --yy-primary-glow: 0 4px 14px rgba(79, 70, 229, 0.28);
+  --yy-primary-text: #2858e9;                     /* 浅底上的主色文字 */
+  --yy-primary-soft: #e9effc;                      /* 主色浅底（active 标签 / 工作台摘要 tint） */
+  --yy-primary-soft-border: #c9d8f8;
+  --yy-primary-glow: 0 4px 14px rgba(40, 88, 233, 0.26);
+  --yy-brand-warm: #e9a23b;                        /* 品牌点缀色，仅少量使用 */
 
   /* 强调色（cyan） */
   --yy-accent: #06b6d4;
@@ -95,8 +96,8 @@
   --yy-danger-soft: #fdecec;
 
   /* 焦点与遮罩 */
-  --yy-focus: #4f46e5;
-  --yy-focus-ring: rgba(79, 70, 229, 0.25);
+  --yy-focus: #2858e9;
+  --yy-focus-ring: rgba(40, 88, 233, 0.25);
   --yy-overlay: rgba(15, 23, 42, 0.45);
 
   /* 阴影 */
@@ -120,21 +121,22 @@
   --yy-border: #272d3d;
   --yy-border-strong: #3a425a;
   --yy-input-border: #39415a;
-  --yy-input-border-focus: #818cf8;
+  --yy-input-border-focus: #8fb3ff;
 
   --yy-text-1: #e9ecf4;
   --yy-text-2: #b3bacb;
   --yy-text-3: #7d8499;
   --yy-text-faint: #565e73;
 
-  --yy-primary: #6366f1;
-  --yy-primary-hover: #7c7ff5;
-  --yy-primary-active: #5157d6;
+  --yy-primary: #4169e1;                           /* 深色下的 cobalt 填充色（白字对比约 4.9:1） */
+  --yy-primary-hover: #5b82ec;
+  --yy-primary-active: #3556bc;
   --yy-on-primary: #ffffff;
-  --yy-primary-text: #a5b0fc;
-  --yy-primary-soft: rgba(99, 102, 241, 0.16);
-  --yy-primary-soft-border: rgba(99, 102, 241, 0.38);
+  --yy-primary-text: #9db8ff;                      /* 深底上的主色文字（cobalt 亮化，保证对比度） */
+  --yy-primary-soft: rgba(65, 105, 225, 0.20);
+  --yy-primary-soft-border: rgba(125, 162, 255, 0.36);
   --yy-primary-glow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --yy-brand-warm: #e9a23b;
 
   --yy-accent: #22d3ee;
   --yy-accent-text: #67e8f9;
@@ -151,8 +153,8 @@
   --yy-danger-text: #fca5a5;
   --yy-danger-soft: rgba(248, 113, 113, 0.13);
 
-  --yy-focus: #818cf8;
-  --yy-focus-ring: rgba(129, 140, 248, 0.32);
+  --yy-focus: #8fb3ff;
+  --yy-focus-ring: rgba(143, 179, 255, 0.32);
   --yy-overlay: rgba(0, 0, 0, 0.55);
 
   --yy-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -238,7 +240,7 @@ textarea:focus-visible,
 }
 
 [data-theme="dark"] ::selection {
-  background: rgba(99, 102, 241, 0.35);
+  background: rgba(65, 105, 225, 0.42);
   color: var(--yy-text-1);
 }
 

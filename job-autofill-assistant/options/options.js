@@ -11,6 +11,7 @@ let aiModelSaveTimer = null;
 let profileSaveTimer = null;
 let profileDirty = false;
 let profileEditRevision = 0;
+let profileDeletionInFlight = false;
 let pendingProfileSave = Promise.resolve(true);
 let editorDocumentId = null;
 let savedAiSettingsFingerprint = null;
@@ -64,6 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderNavCustomDropdown();
   }
+  updateDeleteProfileAction();
 
   // 应用 AI 配置
   applyAiSettings(settingsRes);
@@ -436,7 +438,7 @@ function toDateInput(value) {
 
 async function loadProfiles() {
   const response = await sendMessage({ action: 'getAllProfiles' });
-  if (!response.success) return;
+  if (!response?.success) return false;
 
   allProfiles = response.profiles || [];
   activeProfileId = response.activeProfileId;
@@ -458,9 +460,31 @@ async function loadProfiles() {
   }
   renderNavCustomDropdown();
   await loadAISettings();
+  return true;
+}
+
+function updateDeleteProfileAction() {
+  const profileId = currentProfile?.id || '';
+  const profileAvailable = Boolean(profileId) && allProfiles.some(profile => profile.id === profileId);
+  const isOnlyProfile = profileAvailable && allProfiles.length <= 1;
+  const label = profileDeletionInFlight
+    ? '正在处理删除操作'
+    : !profileId
+      ? '暂无可删除的简历'
+      : !profileAvailable
+        ? '当前简历已在其他页面移除'
+        : isOnlyProfile
+          ? '至少需要保留一份简历'
+          : `删除「${currentProfile.name || '当前简历'}」`;
+  for (const button of document.querySelectorAll('#deleteProfileRailBtn, #deleteProfileBtn')) {
+    button.disabled = profileDeletionInFlight || !profileAvailable || isOnlyProfile;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
 }
 
 function renderNavCustomDropdown() {
+  updateDeleteProfileAction();
   const nameLabel = document.getElementById('navSelectedProfileName');
   const menu = document.getElementById('navProfileDropdownMenu');
   if (!nameLabel || !menu) return;
@@ -1497,8 +1521,14 @@ function bindEvents() {
     await importBackup(file);
   });
   document.getElementById('deleteProfileBtn').addEventListener('click', deleteCurrentProfile);
+  document.getElementById('deleteProfileRailBtn')?.addEventListener('click', deleteCurrentProfile);
   document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
   chrome.storage.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && changes.jobAutofillData) {
+      const nextProfiles = changes.jobAutofillData.newValue?.profiles;
+      allProfiles = Array.isArray(nextProfiles) ? nextProfiles : [];
+      updateDeleteProfileAction();
+    }
     const theme = changes.jobAutofillData?.newValue?.settings?.uiTheme;
     if (area === 'local' && (theme === 'light' || theme === 'dark')) {
       applyThemeFromSettings({ success: true, settings: { uiTheme: theme } });
@@ -2605,22 +2635,62 @@ function fillParsedData(data) {
 }
 
 async function deleteCurrentProfile() {
-  const ok = await showAppleConfirm({
-    title: '删除当前资料档案',
-    subtitle: `确定要删除「${currentProfile?.name || '当前资料'}」吗？此操作不可撤销`,
-    confirmText: '确定删除',
-    isDanger: true
-  });
-  if (!ok) return;
-  clearTimeout(profileSaveTimer);
-  profileDirty = false;
-  const response = await sendMessage({ action: 'deleteProfile', profileId: activeProfileId });
-  if (response.success) {
-    clearSelectedAiResumeFile();
-    await loadProfiles();
-    showToast('资料已删除', 'success');
-  } else {
+  if (profileDeletionInFlight) return;
+  const profileId = currentProfile?.id || '';
+  const profileName = currentProfile?.name || '当前资料';
+  if (!profileId || !allProfiles.some(profile => profile.id === profileId)) {
+    showToast('当前简历不可用，请刷新后重试', 'warning');
+    updateDeleteProfileAction();
+    return;
+  }
+  if (allProfiles.length <= 1) {
     showToast('至少需要保留一份资料', 'warning');
+    updateDeleteProfileAction();
+    return;
+  }
+
+  profileDeletionInFlight = true;
+  updateDeleteProfileAction();
+  let deleteSucceeded = false;
+  try {
+    const ok = await showAppleConfirm({
+      title: '删除当前资料档案',
+      subtitle: `确定要删除「${profileName}」吗？此操作不可撤销`,
+      confirmText: '确定删除',
+      isDanger: true
+    });
+    if (!ok) return;
+    if (!allProfiles.some(profile => profile.id === profileId)) {
+      showToast('这份简历已在其他页面移除', 'warning');
+      return;
+    }
+    if (allProfiles.length <= 1) {
+      showToast('至少需要保留一份资料', 'warning');
+      return;
+    }
+
+    clearTimeout(profileSaveTimer);
+    profileDirty = false;
+    const response = await sendMessage({ action: 'deleteProfile', profileId });
+    if (response?.success) {
+      deleteSucceeded = true;
+      clearSelectedAiResumeFile();
+      const refreshed = await loadProfiles();
+      showToast(
+        refreshed ? '资料已删除' : '资料已删除，但列表刷新失败，请刷新页面',
+        refreshed ? 'success' : 'warning'
+      );
+    } else {
+      showToast(response?.error || '删除失败，请重试', 'warning');
+    }
+  } catch (error) {
+    showToast(
+      deleteSucceeded ? '资料已删除，但页面状态更新失败，请刷新页面' : '删除简历失败：' + error.message,
+      deleteSucceeded ? 'warning' : 'error'
+    );
+  } finally {
+    profileDeletionInFlight = false;
+    updateDeleteProfileAction();
   }
 }
 

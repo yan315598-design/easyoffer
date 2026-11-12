@@ -1,0 +1,30 @@
+参考项目/
+.agent/
+.agents/
+.claude/
+.grok/
+AGENTS.md
+CLAUDE.md
+node_modules/
+.DS_Store
+Thumbs.db
+*.bak
+*.log
+.idea/
+.vscode/
+*.swp
+*~
+
+# 本地密钥、扩展打包产物与个人备份
+*.pem
+*.crx
+.mimosa/
+**/.mimosa/
+backups/
+易offer简历信息备份/
+
+# 测试缓存、运行结果与本地截图（仅保留 README 展示图）
+**/__pycache__/
+test/latest-module-check.txt
+pictures/*
+!pictures/easyoffer-demo.png

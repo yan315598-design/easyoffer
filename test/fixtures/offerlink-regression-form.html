@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>OfferLink 我的简历 · 本地回归表单</title>
+  <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      padding: 28px;
+      background: #f2f4f8;
+      color: #1f2430;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+    main { max-width: 1080px; margin: 0 auto; }
+    .page-head { margin-bottom: 18px; }
+    .page-head h1 { margin: 0 0 6px; font-size: 26px; }
+    .hint { margin: 0; color: #6b7280; font-size: 13px; }
+    .form-section {
+      margin-bottom: 18px;
+      border: 1px solid #dfe3ec;
+      border-radius: 14px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 22px;
+      cursor: pointer;
+      user-select: none;
+      background: #fbfcff;
+      border-bottom: 1px solid #eef1f6;
+    }
+    .section-header:hover { background: #f3f6ff; }
+    .section-title { font-size: 18px; font-weight: 700; }
+    .section-subtitle { color: #8b93a5; font-size: 12px; }
+    .section-body { padding: 20px 22px 22px; }
+    .form-section.is-collapsed .section-body { display: none; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .field { min-width: 0; margin-bottom: 14px; }
+    .field > label {
+      display: block;
+      margin-bottom: 6px;
+      color: #586076;
+      font-size: 13px;
+    }
+    input, textarea, select, button { font: inherit; }
+    input, textarea, select {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid #cbd2df;
+      border-radius: 8px;
+      background: #fff;
+    }
+    textarea { min-height: 76px; resize: vertical; }
+    .sub-title { margin: 2px 0 12px; font-size: 14px; color: #374151; }
+    .info-block { margin-top: 6px; }
+    .more-fields-toggle {
+      margin: 2px 0 14px;
+      padding: 8px 14px;
+      border: 1px dashed #9aa8ff;
+      border-radius: 8px;
+      background: #f4f6ff;
+      color: #3144c8;
+      cursor: pointer;
+    }
+    .more-fields { padding-top: 4px; }
+    .experience-items { display: flex; flex-direction: column; gap: 14px; }
+    .experience-item.is-collapsed-item > :not(.experience-item-header) { display: none; }
+    .experience-item {
+      padding: 16px;
+      border: 1px solid #e3e7f0;
+      border-radius: 10px;
+      background: #fcfdff;
+    }
+    .item-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .item-title { font-weight: 700; font-size: 14px; }
+    .item-tag { color: #8b93a5; font-size: 12px; }
+    .add-btn {
+      margin-top: 14px;
+      padding: 9px 16px;
+      border: 1px solid #c7d2fe;
+      border-radius: 8px;
+      background: #eef2ff;
+      color: #3144c8;
+      cursor: pointer;
+    }
+    .notice { margin: 0 0 12px; color: #8a5a00; font-size: 13px; }
+    .action-bar {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      padding: 18px 0 8px;
+    }
+    .action-bar button {
+      padding: 9px 18px;
+      border: 1px solid #cbd2df;
+      border-radius: 8px;
+      background: #fff;
+      color: #1f2430;
+      cursor: pointer;
+    }
+    #saveSyncBtn { border-color: #3144c8; background: #3144c8; color: #fff; }
+    #deleteBtn { border-color: #f0c4c4; color: #b42318; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.42);
+    }
+    .modal {
+      width: min(420px, calc(100vw - 40px));
+      padding: 22px;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    }
+    .modal h2 { margin: 0 0 10px; font-size: 18px; }
+    .modal p { margin: 0 0 18px; color: #586076; font-size: 13px; line-height: 1.7; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .modal-actions button {
+      padding: 8px 16px;
+      border: 1px solid #cbd2df;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+    }
+    #entryConfirmBtn { border-color: #3144c8; background: #3144c8; color: #fff; }
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+      body { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="page-head">
+    <h1>我的简历</h1>
+    <p class="hint">仅用于本地离线回归：模拟 OfferLink myResume 的模块折叠、条目新增与逐条保存确认，不保存、不提交任何数据。</p>
+  </div>
+
+  <div class="form-section" id="basicInfo" data-title="基本信息">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="true">
+      <span class="section-title">基本信息</span>
+      <span class="section-subtitle">个人信息</span>
+    </div>
+    <div class="section-body">
+      <div class="grid">
+        <div class="field">
+          <label for="fullName">姓名</label>
+          <input id="fullName" name="fullName" type="text" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="phone">手机号码</label>
+          <input id="phone" name="phone" type="tel" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label for="email">电子邮箱</label>
+          <input id="email" name="email" type="email" autocomplete="email">
+        </div>
+      </div>
+
+      <div class="info-block">
+        <h3 class="sub-title">家庭地址信息</h3>
+        <div class="grid">
+          <div class="field">
+            <label for="homeProvince">家庭所在地区</label>
+            <input id="homeProvince" name="homeProvince" type="text">
+          </div>
+          <div class="field">
+            <label for="homeCity">家庭所在城市</label>
+            <input id="homeCity" name="homeCity" type="text">
+          </div>
+          <div class="field">
+            <label for="homeDistrict">家庭所在区县</label>
+            <input id="homeDistrict" name="homeDistrict" type="text">
+          </div>
+        </div>
+      </div>
+
+      <div class="info-block">
+        <h3 class="sub-title">院校信息</h3>
+        <div class="grid">
+          <div class="field">
+            <label for="schoolProvince">学校所在地区</label>
+            <input id="schoolProvince" name="schoolProvince" type="text">
+          </div>
+          <div class="field">
+            <label for="schoolCity">学校所在城市</label>
+            <input id="schoolCity" name="schoolCity" type="text">
+          </div>
+          <div class="field">
+            <label for="schoolDistrict">学校所在区县</label>
+            <input id="schoolDistrict" name="schoolDistrict" type="text">
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="more-fields-toggle" id="expandBasicMore" aria-expanded="false" aria-controls="basicExtraFields">展开更多个人信息字段</button>
+
+      <div class="more-fields" id="basicExtraFields" hidden>
+        <div class="grid">
+          <div class="field">
+            <label for="street">详细地址</label>
+            <input id="street" name="street" type="text">
+          </div>
+          <div class="field">
+            <label for="homeAddress">家庭地址</label>
+            <input id="homeAddress" name="homeAddress" type="text">
+          </div>
+          <div class="field">
+            <label for="wechat">微信号</label>
+            <input id="wechat" name="wechat" type="text">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section" id="education" data-title="教育经历">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="true">
+      <span class="section-title">教育经历</span>
+      <span class="section-subtitle">两段教育经历</span>
+    </div>
+    <div class="section-body">
+      <div class="experience-items">
+        <div class="experience-item" data-profile-section="education" data-entry-index="0">
+          <div class="item-head">
+            <span class="item-title">教育经历 01</span>
+            <span class="item-tag">第一段</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="school1">学校名称</label>
+              <input id="school1" name="school" type="text">
+            </div>
+            <div class="field">
+              <label for="studentId1">学号</label>
+              <input id="studentId1" name="studentId" type="text">
+            </div>
+            <div class="field">
+              <label for="majorCategory1">专业分类</label>
+              <input id="majorCategory1" name="majorCategory" type="text">
+            </div>
+            <div class="field">
+              <label for="gpa1">平均绩点（GPA）</label>
+              <input id="gpa1" name="gpa" type="text">
+            </div>
+          </div>
+        </div>
+
+        <div class="experience-item" data-profile-section="education" data-entry-index="1">
+          <div class="item-head">
+            <span class="item-title">教育经历 02</span>
+            <span class="item-tag">第二段</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="school2">学校名称</label>
+              <input id="school2" name="school" type="text">
+            </div>
+            <div class="field">
+              <label for="studentId2">学号</label>
+              <input id="studentId2" name="studentId" type="text">
+            </div>
+            <div class="field">
+              <label for="majorCategory2">专业分类</label>
+              <input id="majorCategory2" name="majorCategory" type="text">
+            </div>
+            <div class="field">
+              <label for="gpa2">平均绩点（GPA）</label>
+              <input id="gpa2" name="gpa" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section" id="projectExperience" data-title="项目经历">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="true">
+      <span class="section-title">项目经历</span>
+      <span class="section-subtitle">添加后立即出现空白卡片</span>
+    </div>
+    <div class="section-body">
+      <div class="experience-items" id="projectItems">
+        <div class="experience-item" data-profile-section="projects" data-entry-index="0">
+          <div class="item-head experience-item-header">
+            <span class="item-title">项目 1</span>
+            <span class="item-tag">经历条目</span>
+            <button type="button" class="collapse-btn" aria-label="展开或折叠项目">⌄</button>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="projectName1">项目名称</label>
+              <input id="projectName1" name="projectName" type="text">
+            </div>
+            <div class="field">
+              <label for="projectRole1">担任角色</label>
+              <input id="projectRole1" name="projectRole" type="text">
+            </div>
+            <div class="field">
+              <label for="projectDateRange1">起止日期</label>
+              <input id="projectDateRange1" name="projectDateRange" type="text" placeholder="2025-03 ~ 2025-08">
+            </div>
+          </div>
+          <div class="field">
+            <label for="projectDescription1">详细信息</label>
+            <textarea id="projectDescription1" name="projectDescription"></textarea>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="projectResponsibilities1">项目中职责</label>
+              <textarea id="projectResponsibilities1" name="projectResponsibilities"></textarea>
+            </div>
+            <div class="field">
+              <label for="projectAchievements1">项目业绩</label>
+              <textarea id="projectAchievements1" name="projectAchievements"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="add-btn" id="addProjectBtn">添加项目经历</button>
+    </div>
+  </div>
+
+  <div class="form-section" id="languageSkills" data-title="英语能力">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="true">
+      <span class="section-title">英语能力</span>
+      <span class="section-subtitle">语言能力证书</span>
+    </div>
+    <div class="section-body">
+      <div class="experience-items">
+        <div class="experience-item" data-profile-section="languageCertificates" data-entry-index="0">
+          <div class="item-head">
+            <span class="item-title">语言能力 01</span>
+            <span class="item-tag">CET</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="langName1">语言/考试名称</label>
+              <input id="langName1" name="languageName" type="text">
+            </div>
+            <div class="field">
+              <label for="langLevel1">等级/水平</label>
+              <input id="langLevel1" name="languageLevel" type="text">
+            </div>
+            <div class="field">
+              <label for="langScore1">成绩</label>
+              <input id="langScore1" name="languageScore" type="text">
+            </div>
+            <div class="field">
+              <label for="langDate1">取得日期</label>
+              <input id="langDate1" name="languageObtainedDate" type="text">
+            </div>
+            <div class="field">
+              <label for="langProficiency1">掌握程度</label>
+              <input id="langProficiency1" name="languageProficiency" type="text">
+            </div>
+            <div class="field">
+              <label for="langListening1">听说能力</label>
+              <input id="langListening1" name="languageListeningSpeaking" type="text">
+            </div>
+            <div class="field">
+              <label for="langWriting1">读写能力</label>
+              <input id="langWriting1" name="languageReadingWriting" type="text">
+            </div>
+          </div>
+        </div>
+
+        <div class="experience-item" data-profile-section="languageCertificates" data-entry-index="1">
+          <div class="item-head">
+            <span class="item-title">语言能力 02</span>
+            <span class="item-tag">IELTS</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="langName2">语言/考试名称</label>
+              <input id="langName2" name="languageName" type="text">
+            </div>
+            <div class="field">
+              <label for="langLevel2">等级/水平</label>
+              <input id="langLevel2" name="languageLevel" type="text">
+            </div>
+            <div class="field">
+              <label for="langScore2">成绩</label>
+              <input id="langScore2" name="languageScore" type="text">
+            </div>
+            <div class="field">
+              <label for="langDate2">取得日期</label>
+              <input id="langDate2" name="languageObtainedDate" type="text">
+            </div>
+            <div class="field">
+              <label for="langProficiency2">掌握程度</label>
+              <input id="langProficiency2" name="languageProficiency" type="text">
+            </div>
+            <div class="field">
+              <label for="langListening2">听说能力</label>
+              <input id="langListening2" name="languageListeningSpeaking" type="text">
+            </div>
+            <div class="field">
+              <label for="langWriting2">读写能力</label>
+              <input id="langWriting2" name="languageReadingWriting" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section is-collapsed" id="certificates" data-title="证书信息">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="false" id="certificatesHeader">
+      <span class="section-title">证书信息</span>
+      <span class="section-subtitle">点击展开</span>
+    </div>
+    <div class="section-body">
+      <div class="experience-items" id="certificateItems">
+        <div class="experience-item" data-profile-section="certificates" data-entry-index="0">
+          <div class="item-head">
+            <span class="item-title">证书 1</span>
+            <span class="item-tag">经历条目</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="certName1">证书名称</label>
+              <input id="certName1" name="certificateName" type="text">
+            </div>
+            <div class="field">
+              <label for="certDate1">获得时间</label>
+              <input id="certDate1" name="certificateDate" type="text">
+            </div>
+            <div class="field">
+              <label for="certLevel1">证书等级</label>
+              <input id="certLevel1" name="certificateLevel" type="text">
+            </div>
+            <div class="field">
+              <label for="certCode1">证书编号</label>
+              <input id="certCode1" name="certificateCode" type="text">
+            </div>
+            <div class="field">
+              <label for="certIssuer1">授予单位</label>
+              <input id="certIssuer1" name="certificateIssuer" type="text">
+            </div>
+          </div>
+          <div class="field">
+            <label for="certDescription1">证书描述</label>
+            <textarea id="certDescription1" name="certificateDescription"></textarea>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="add-btn" id="addCertificateBtn">添加证书</button>
+    </div>
+  </div>
+
+  <div class="form-section" id="trainings" data-title="培训经历">
+    <div class="section-header" role="button" tabindex="0" aria-expanded="true">
+      <span class="section-title">培训经历</span>
+      <span class="section-subtitle">逐条保存模拟模块</span>
+    </div>
+    <div class="section-body">
+      <p class="notice">逐条保存模拟：点击“添加培训经历”只会弹出确认弹窗，不会立即新增卡片。</p>
+      <div class="experience-items" id="trainingItems">
+        <div class="experience-item" data-profile-section="trainings" data-entry-index="0">
+          <div class="item-head">
+            <span class="item-title">培训 1</span>
+            <span class="item-tag">逐条保存</span>
+          </div>
+          <div class="grid">
+            <div class="field">
+              <label for="trainingName1">培训名称</label>
+              <input id="trainingName1" name="trainingName" type="text">
+            </div>
+            <div class="field">
+              <label for="trainingInstitution1">培训机构</label>
+              <input id="trainingInstitution1" name="trainingInstitution" type="text">
+            </div>
+            <div class="field">
+              <label for="trainingStart1">开始时间</label>
+              <input id="trainingStart1" name="trainingStart" type="text">
+            </div>
+            <div class="field">
+              <label for="trainingEnd1">结束时间</label>
+              <input id="trainingEnd1" name="trainingEnd" type="text">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="add-btn" id="addTrainingBtn">添加培训经历</button>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <button type="button" id="saveSyncBtn" data-danger="save">保存并同步</button>
+    <button type="button" id="cancelBtn" data-danger="cancel">取消</button>
+    <button type="button" id="deleteBtn" data-danger="delete">删除</button>
+  </div>
+</main>
+
+<div id="entryConfirmModal" class="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="entryConfirmTitle">
+    <h2 id="entryConfirmTitle">逐条保存</h2>
+    <p>该模块要求逐条保存，确认后才会新增记录。本地回归中不会点击“确定”。</p>
+    <div class="modal-actions">
+      <button type="button" id="entryConfirmBtn" data-danger="confirm">确定</button>
+      <button type="button" id="entryCancelBtn" data-danger="cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  'use strict';
+
+  window.__offerlinkDangerClicks = { save: 0, cancel: 0, delete: 0, confirm: 0 };
+  window.__offerlinkButtonClicks = [];
+
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : event.target && event.target.parentElement;
+    const button = target && target.closest ? target.closest('button') : null;
+    if (button) window.__offerlinkButtonClicks.push((button.textContent || '').trim());
+    const dangerous = target && target.closest ? target.closest('[data-danger]') : null;
+    if (dangerous) {
+      const key = dangerous.dataset.danger;
+      window.__offerlinkDangerClicks[key] = (window.__offerlinkDangerClicks[key] || 0) + 1;
+    }
+  }, true);
+
+  document.querySelectorAll('.form-section > .section-header').forEach((header) => {
+    const toggle = () => {
+      const section = header.closest('.form-section');
+      if (!section) return;
+      const collapsed = section.classList.toggle('is-collapsed');
+      header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const subtitle = header.querySelector('.section-subtitle');
+      if (subtitle && section.id === 'certificates') {
+        subtitle.textContent = collapsed ? '点击展开' : '已展开';
+      }
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
+    });
+  });
+
+  const moreButton = document.getElementById('expandBasicMore');
+  moreButton.addEventListener('click', () => {
+    const expanded = moreButton.getAttribute('aria-expanded') === 'true';
+    moreButton.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    document.getElementById('basicExtraFields').hidden = expanded;
+    moreButton.textContent = expanded ? '展开更多个人信息字段' : '收起更多个人信息字段';
+  });
+
+  function projectCardHtml(index) {
+    const n = index + 1;
+    return `
+      <div class="experience-item" data-profile-section="projects" data-entry-index="${index}">
+        <div class="item-head experience-item-header">
+          <span class="item-title">项目 ${n}</span>
+          <span class="item-tag">经历条目</span>
+          <button type="button" class="collapse-btn" aria-label="展开或折叠项目">⌄</button>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label for="projectName${n}">项目名称</label>
+            <input id="projectName${n}" name="projectName" type="text">
+          </div>
+          <div class="field">
+            <label for="projectRole${n}">担任角色</label>
+            <input id="projectRole${n}" name="projectRole" type="text">
+          </div>
+          <div class="field">
+            <label for="projectDateRange${n}">起止日期</label>
+            <input id="projectDateRange${n}" name="projectDateRange" type="text" placeholder="YYYY-MM ~ YYYY-MM">
+          </div>
+        </div>
+        <div class="field">
+          <label for="projectDescription${n}">详细信息</label>
+          <textarea id="projectDescription${n}" name="projectDescription"></textarea>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label for="projectResponsibilities${n}">项目中职责</label>
+            <textarea id="projectResponsibilities${n}" name="projectResponsibilities"></textarea>
+          </div>
+          <div class="field">
+            <label for="projectAchievements${n}">项目业绩</label>
+            <textarea id="projectAchievements${n}" name="projectAchievements"></textarea>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function certificateCardHtml(index) {
+    const n = index + 1;
+    return `
+      <div class="experience-item" data-profile-section="certificates" data-entry-index="${index}">
+        <div class="item-head">
+          <span class="item-title">证书 ${n}</span>
+          <span class="item-tag">经历条目</span>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label for="certName${n}">证书名称</label>
+            <input id="certName${n}" name="certificateName" type="text">
+          </div>
+          <div class="field">
+            <label for="certDate${n}">获得时间</label>
+            <input id="certDate${n}" name="certificateDate" type="text">
+          </div>
+          <div class="field">
+            <label for="certLevel${n}">证书等级</label>
+            <input id="certLevel${n}" name="certificateLevel" type="text">
+          </div>
+          <div class="field">
+            <label for="certCode${n}">证书编号</label>
+            <input id="certCode${n}" name="certificateCode" type="text">
+          </div>
+          <div class="field">
+            <label for="certIssuer${n}">授予单位</label>
+            <input id="certIssuer${n}" name="certificateIssuer" type="text">
+          </div>
+        </div>
+        <div class="field">
+          <label for="certDescription${n}">证书描述</label>
+          <textarea id="certDescription${n}" name="certificateDescription"></textarea>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('addProjectBtn').addEventListener('click', () => {
+    const items = document.getElementById('projectItems');
+    items.querySelectorAll('.experience-item').forEach(item => item.classList.add('is-collapsed-item'));
+    items.insertAdjacentHTML('beforeend', projectCardHtml(items.querySelectorAll('.experience-item').length));
+  });
+  document.getElementById('projectItems').addEventListener('click', event => {
+    event.target.closest('.collapse-btn')?.closest('.experience-item')?.classList.toggle('is-collapsed-item');
+  });
+
+  document.getElementById('addCertificateBtn').addEventListener('click', () => {
+    const items = document.getElementById('certificateItems');
+    items.insertAdjacentHTML('beforeend', certificateCardHtml(items.querySelectorAll('.experience-item').length));
+  });
+
+  const confirmModal = document.getElementById('entryConfirmModal');
+  document.getElementById('addTrainingBtn').addEventListener('click', () => {
+    confirmModal.hidden = false;
+  });
+  document.getElementById('entryConfirmBtn').addEventListener('click', () => {
+    confirmModal.hidden = true;
+  });
+  document.getElementById('entryCancelBtn').addEventListener('click', () => {
+    confirmModal.hidden = true;
+  });
+</script>
+<script>
+// OfferLink 的日期由 focus 打开，选项和地区面板由组件提交到表单模型。
+const widgetFields = document.createElement('div');
+widgetFields.innerHTML = `
+  <div class="el-form-item"><label for="widgetBirthday">生日</label>
+    <div class="el-date-editor el-date-editor--date" role="combobox" aria-controls="birthdayPicker" aria-expanded="false">
+      <input id="widgetBirthday" aria-controls="birthdayPicker">
+    </div>
+  </div>
+  <div class="el-form-item"><label for="widgetGender">性别</label>
+    <div class="el-select"><div class="el-select__wrapper">
+      <input id="widgetGender" role="combobox" aria-controls="genderOptions" aria-expanded="false" readonly>
+      <div class="el-select__selected-item el-select__placeholder is-transparent">请选择性别</div>
+    </div></div>
+  </div>
+  <div class="el-form-item"><label for="widgetBirthPlace">出生地</label><input id="widgetBirthPlace"></div>
+  <div class="el-form-item"><label for="widgetStudentOrigin">生源地</label>
+    <div class="el-cascader" aria-describedby="originPicker"><input id="widgetStudentOrigin" aria-expanded="false"></div>
+  </div>
+  <div class="el-form-item"><label for="widgetBadRegion">户口所在地</label>
+    <div class="el-cascader" aria-describedby="badRegionPicker"><input id="widgetBadRegion" aria-expanded="false"></div>
+  </div>
+`;
+document.querySelector('#basicInfo .section-body').append(widgetFields);
+const birthday = document.getElementById('widgetBirthday');
+const birthdayPicker = document.createElement('div');
+birthdayPicker.id = 'birthdayPicker';
+birthdayPicker.className = 'el-picker-panel el-date-picker';
+birthdayPicker.hidden = true;
+birthdayPicker.innerHTML = `<span class="el-date-picker__header-label">2026 年</span>
+  <span class="el-date-picker__header-label">11 月</span><div class="calendar-grid"></div>`;
+document.body.append(birthdayPicker);
+birthday.addEventListener('focus', () => {
+  birthdayPicker.hidden = false;
+  birthday.parentElement.setAttribute('aria-expanded', 'true');
+});
+const [yearHeader, monthHeader] = birthdayPicker.querySelectorAll('span');
+const grid = birthdayPicker.querySelector('.calendar-grid');
+yearHeader.onclick = () => {
+  grid.innerHTML = '<button type="button" class="d-arrow-left">前</button><table class="el-year-table"><tr><td class="available">2026</td></tr></table>';
+  grid.querySelector('button').onclick = () => {
+    const yearCell = grid.querySelector('td');
+    yearCell.textContent = Number(yearCell.textContent) - 10 > 2002 ? Number(yearCell.textContent) - 10 : '2002';
+    yearCell.onclick = () => { yearHeader.textContent = '2002 年'; grid.innerHTML = ''; monthHeader.click(); };
+  };
+};
+monthHeader.onclick = () => {
+  grid.innerHTML = '<table class="el-month-table"><tr><td class="available">一月</td></tr></table>';
+  grid.querySelector('td').onclick = () => {
+    monthHeader.textContent = '1 月';
+    grid.innerHTML = '<table class="el-date-table"><tr><td class="prev-month">15</td><td class="available"><span>15</span></td></tr></table>';
+    grid.querySelector('td.available').onclick = () => {
+      birthday.value = '2002-01-15';
+      birthdayPicker.hidden = true;
+      birthday.parentElement.setAttribute('aria-expanded', 'false');
+    };
+  };
+};
+const gender = document.getElementById('widgetGender');
+const genderOptions = document.createElement('div');
+genderOptions.id = 'genderOptions';
+genderOptions.className = 'el-select-dropdown';
+genderOptions.innerHTML = '<div role="option">男</div><div role="option">女</div>';
+genderOptions.hidden = true;
+document.body.append(genderOptions);
+gender.parentElement.onclick = () => {
+  genderOptions.hidden = false;
+  gender.setAttribute('aria-expanded', 'true');
+};
+genderOptions.firstElementChild.onclick = () => {
+  const selected = gender.parentElement.querySelector('.el-select__placeholder');
+  selected.classList.remove('is-transparent');
+  selected.textContent = '男';
+  genderOptions.hidden = true;
+  gender.setAttribute('aria-expanded', 'false');
+};
+for (const [id, panelId] of [['widgetStudentOrigin', 'originPicker'], ['widgetBadRegion', 'badRegionPicker']]) {
+  const input = document.getElementById(id);
+  const panel = document.createElement('div');
+  panel.id = panelId;
+  panel.className = 'el-cascader__dropdown';
+  panel.hidden = true;
+  document.body.append(panel);
+  input.parentElement.onclick = () => {
+    panel.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    panel.replaceChildren();
+    appendLevel(0);
+  };
+  const levels = ['中国', '广东省', '深圳市', '罗湖区'];
+  function appendLevel(level) {
+    const menu = document.createElement('ul');
+    menu.className = 'el-cascader-menu__list';
+    const node = document.createElement('li');
+    node.className = 'el-cascader-node';
+    node.innerHTML = `<label><input type="radio"></label><span class="el-cascader-node__label">${levels[level]}</span>`;
+    node.setAttribute('aria-haspopup', String(level < levels.length - 1));
+    node.querySelector('span').onclick = () => { if (level < levels.length - 1) appendLevel(level + 1); };
+    node.querySelector('input').onchange = () => {
+      input.value = levels.slice(0, level + 1).join(' / ');
+      panel.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    };
+    menu.append(node);
+    panel.append(menu);
+  }
+}
+</script>
+</body>
+</html>

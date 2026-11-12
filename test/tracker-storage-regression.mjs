@@ -1,0 +1,14 @@
+import {loadScript,makeChromeStorage} from './helpers.mjs';
+const chrome=makeChromeStorage();
+const ctx=loadScript('scripts/storage.js',{chrome});
+const store=ctx.storageManager;
+await store.initialize();
+const a=await store.addSubmission({company:'A',position:'one',url:'https://same'});
+const b=await store.addSubmission({company:'A',position:'two',url:'https://same'});
+if((await store.getSubmissions()).length!==2)throw Error('different roles merged');
+const snapshot=await store.loadAll();
+await store.updateSubmission(a.id,{status:'Offer'});
+await store.saveAll(snapshot);
+if((await store.getSubmissions()).find(r=>r.id===a.id).status!=='Offer')throw Error('profile save overwrote tracker');
+if(!JSON.parse(await store.exportData()).submissions.some(r=>r.id===b.id))throw Error('backup missing');
+console.log('通过 3，失败 0');

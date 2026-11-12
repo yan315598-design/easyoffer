@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>yanyu 网申填写助手 · 本地回归表单</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px; background: #f3f5fa; color: #202435; font-family: "Microsoft YaHei", sans-serif; }
+    main { max-width: 1040px; margin: auto; }
+    section { margin-bottom: 20px; padding: 24px; border: 1px solid #dfe3ee; border-radius: 14px; background: #fff; }
+    h1 { margin-top: 0; } h2 { margin: 0 0 18px; font-size: 19px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .field { min-width: 0; margin-bottom: 14px; }
+    .field > label, .form-label { display: block; margin-bottom: 7px; color: #586076; font-size: 13px; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; padding: 10px 11px; border: 1px solid #c9cfdd; border-radius: 8px; background: #fff; }
+    textarea { min-height: 88px; resize: vertical; }
+    input[readonly] { background: #fafbfc; cursor: pointer; }
+    .ant-select { position: relative; }
+    .ant-select-dropdown { position: fixed; z-index: 30; display: none; min-width: 220px; padding: 6px; border: 1px solid #d8deeb; border-radius: 8px; background: white; box-shadow: 0 12px 32px #25325222; }
+    .ant-select-dropdown.open { display: block; }
+    .ant-select-item-option { padding: 9px 12px; border-radius: 6px; cursor: pointer; }
+    .ant-select-item-option:hover { background: #eef0ff; }
+    .work-card, .education-card { padding: 18px; border: 1px solid #e2e5ee; border-radius: 10px; }
+    .status { padding: 10px 12px; border-radius: 8px; background: #eef2ff; font-size: 13px; }
+    /* 故意污染宿主页，验证扩展 Shadow DOM 是否隔离 */
+    button { border: 3px dashed magenta !important; color: lime !important; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } body { padding: 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>本地网申回归表单</h1>
+  <p class="status">仅用于离线测试：慢下拉、级联启用、单字段异常、重复经历与多区域框选，不提交任何数据。</p>
+
+  <section id="basic-section" data-section="基本信息">
+    <h2>基本信息</h2>
+    <div class="grid">
+      <div class="field"><label for="fullName">姓名</label><input id="fullName" name="fullName" autocomplete="name"></div>
+      <div class="field"><label for="phone">手机号码</label><input id="phone" name="phone" type="tel" autocomplete="tel"></div>
+      <div class="field"><label for="email">电子邮箱</label><input id="email" name="email" type="email" autocomplete="email"></div>
+      <div class="field"><label for="gender">性别</label><select id="gender" name="gender"><option value="">请选择</option><option value="male">男</option><option value="female">女</option></select></div>
+      <div class="field"><label for="birthDate">出生日期</label><input id="birthDate" name="birthDate" type="date"></div>
+      <div class="field"><label for="currentCity">现居住城市</label><input id="currentCity" name="currentCity" value="保留我"></div>
+    </div>
+  </section>
+
+  <section id="widget-section">
+    <h2>异步组件与故障隔离</h2>
+    <div class="grid">
+      <div class="field ant-select" id="degreeWidget">
+        <label class="form-label" for="degreeInput">最高学历（选项延迟 650ms）</label>
+        <input id="degreeInput" name="degree" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="degreeDropdown" readonly placeholder="请选择">
+      </div>
+      <div class="field">
+        <label class="form-label" for="brokenInput">异常下拉（点击抛错）</label>
+        <input id="brokenInput" name="broken" role="combobox" aria-haspopup="listbox" readonly placeholder="请选择">
+      </div>
+      <div class="field"><label for="afterFailure">异常后仍应填写的期望岗位</label><input id="afterFailure" name="expectedPosition"></div>
+      <div class="field ant-select" id="provinceWidget">
+        <label class="form-label" for="provinceInput">省份</label>
+        <input id="provinceInput" name="state" role="combobox" aria-expanded="false" aria-controls="provinceDropdown" readonly>
+      </div>
+      <div class="field ant-select" id="cityWidget">
+        <label class="form-label" for="cityInput">城市（延迟启用）</label>
+        <input id="cityInput" name="city" role="combobox" aria-expanded="false" aria-controls="cityDropdown" readonly disabled>
+      </div>
+      <div class="field"><label for="afterCascade">级联后仍应填写的招聘渠道</label><input id="afterCascade" name="recruitSource"></div>
+      <div class="field"><label for="expectedIndustry">期望行业</label><input id="expectedIndustry" name="expectedIndustry"></div>
+      <div class="field"><label for="currentSalary">当前薪资</label><input id="currentSalary" name="currentSalary"></div>
+    </div>
+  </section>
+
+  <section id="education-section">
+    <h2>教育经历</h2>
+    <div class="education-card" id="education-1">
+      <div class="grid">
+        <div class="field"><label for="school1">学校名称</label><input id="school1"></div>
+        <div class="field"><label for="studentId">学号</label><input id="studentId"></div>
+        <div class="field"><label for="majorCategory">专业分类</label><input id="majorCategory"></div>
+      </div>
+    </div>
+    <div class="education-card" id="education-2">
+      <div class="grid">
+        <div class="field"><label for="school2">学校名称</label><input id="school2"></div>
+        <div class="field"><label for="studentId2">学号</label><input id="studentId2"></div>
+        <div class="field"><label for="majorCategory2">专业分类</label><input id="majorCategory2"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="family-section">
+    <h2>家庭成员</h2>
+    <div class="grid">
+      <div class="field"><label for="familyBirthDate">出生日期</label><input id="familyBirthDate"></div>
+      <div class="field"><label for="familyPoliticalStatus">政治面貌</label><input id="familyPoliticalStatus"></div>
+      <div class="field"><label for="familyHomeAddress">家庭所在地</label><input id="familyHomeAddress"></div>
+    </div>
+  </section>
+
+  <section id="training-section">
+    <h2>培训经历</h2>
+    <div class="grid">
+      <div class="field"><label for="trainingName">培训名称</label><input id="trainingName"></div>
+      <div class="field"><label for="trainingStart">开始时间</label><input id="trainingStart"></div>
+      <div class="field"><label for="trainingEnd">结束时间</label><input id="trainingEnd"></div>
+    </div>
+  </section>
+
+  <section id="work-section">
+    <h2>实习与工作经历</h2>
+    <div class="work-card" id="work-1" data-profile-section="workExperience" data-entry-index="0">
+      <h3>经历 01</h3>
+      <div class="grid">
+        <div class="field"><label for="company1">公司名称</label><input id="company1" name="company"></div>
+        <div class="field"><label for="position1">职位名称</label><input id="position1" name="position"></div>
+        <div class="field"><label for="industry1">行业类别</label><input id="industry1"></div>
+        <div class="field"><label for="referenceName1">证明人</label><input id="referenceName1"></div>
+        <div class="field"><label for="workStart1">开始时间</label><input id="workStart1" name="workStartDate" placeholder="YYYY-MM"></div>
+        <div class="field"><label for="workEnd1">结束时间</label><input id="workEnd1" name="workEndDate" placeholder="YYYY-MM"></div>
+      </div>
+      <div class="field"><label for="workDescription1">工作描述</label><textarea id="workDescription1" name="workDescription"></textarea></div>
+    </div>
+    <div class="work-card" id="work-2" data-profile-section="workExperience" data-entry-index="1">
+      <h3>经历 02</h3>
+      <div class="grid">
+        <div class="field"><label for="company2">公司名称</label><input id="company2" name="company"></div>
+        <div class="field"><label for="position2">职位名称</label><input id="position2" name="position"></div>
+        <div class="field"><label for="workStart2">开始时间</label><input id="workStart2" name="workStartDate" placeholder="YYYY-MM"></div>
+        <div class="field"><label for="workEnd2">结束时间</label><input id="workEnd2" name="workEndDate" placeholder="YYYY-MM"></div>
+      </div>
+      <div class="field"><label for="workDescription2">工作描述</label><textarea id="workDescription2" name="workDescription"></textarea></div>
+    </div>
+  </section>
+</main>
+
+<div id="degreeDropdown" class="ant-select-dropdown" role="listbox" aria-hidden="true"></div>
+<div id="provinceDropdown" class="ant-select-dropdown" role="listbox" aria-hidden="true"></div>
+<div id="cityDropdown" class="ant-select-dropdown" role="listbox" aria-hidden="true"></div>
+<script>
+  function positionPanel(input, panel) {
+    const rect = input.getBoundingClientRect();
+    panel.style.left = `${rect.left}px`;
+    panel.style.top = `${rect.bottom + 4}px`;
+    panel.style.width = `${rect.width}px`;
+  }
+  function closePanel(input, panel) {
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    input.setAttribute('aria-expanded', 'false');
+  }
+  function installDelayedSelect(inputId, panelId, getOptions, delay = 650) {
+    const input = document.getElementById(inputId);
+    const panel = document.getElementById(panelId);
+    let generation = 0;
+    input.addEventListener('click', () => {
+      if (input.disabled) return;
+      const token = ++generation;
+      if (panel.classList.contains('open')) { closePanel(input, panel); return; }
+      positionPanel(input, panel);
+      panel.replaceChildren();
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+      input.setAttribute('aria-expanded', 'true');
+      setTimeout(() => {
+        if (token !== generation || !panel.classList.contains('open')) return;
+        for (const text of getOptions()) {
+          const option = document.createElement('div');
+          option.className = 'ant-select-item-option';
+          option.setAttribute('role', 'option');
+          option.textContent = text;
+          option.addEventListener('click', () => {
+            input.value = text;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            closePanel(input, panel);
+            input.dispatchEvent(new CustomEvent('yanyu:selected', { bubbles: true, detail: text }));
+          });
+          panel.appendChild(option);
+        }
+      }, delay);
+    });
+    return { input, panel, close: () => { generation++; closePanel(input, panel); } };
+  }
+  const degree = installDelayedSelect('degreeInput', 'degreeDropdown', () => ['本科', '硕士研究生', '博士研究生']);
+  const province = installDelayedSelect('provinceInput', 'provinceDropdown', () => ['广东省', '北京市'], 250);
+  const city = installDelayedSelect('cityInput', 'cityDropdown', () => ['广州市', '深圳市'], 500);
+  document.getElementById('provinceInput').addEventListener('yanyu:selected', () => {
+    setTimeout(() => { document.getElementById('cityInput').disabled = false; }, 700);
+  });
+  const broken = document.getElementById('brokenInput');
+  broken.click = () => { throw new Error('fixture: single field click failure'); };
+  window.yanyuFixture = { degree, province, city };
+</script>
+</body>
+</html>

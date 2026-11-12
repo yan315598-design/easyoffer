@@ -22,6 +22,20 @@
     }
   };
 
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // 字段内容变化时的轻反馈：仅 transform/opacity，180ms。
+  const flashRow = (row) => {
+    if (prefersReducedMotion.matches || typeof row.animate !== 'function') return;
+    row.animate(
+      [
+        { opacity: 0, transform: 'translateY(4px)' },
+        { opacity: 1, transform: 'none' }
+      ],
+      { duration: 180, easing: 'ease-out' }
+    );
+  };
+
   const steps = [...demo.querySelectorAll('[data-demo-stage]')];
   const explanation = demo.querySelector('.product-demo-explain');
   for (const button of steps) {
@@ -33,10 +47,30 @@
       explanation.textContent = descriptions[stage];
       for (const [field, [value, status, tone]] of Object.entries(examples[stage])) {
         const row = demo.querySelector(`[data-demo-field="${field}"]`);
-        row.querySelector('.demo-field-value').textContent = value;
-        row.querySelector('.demo-field-status').textContent = status;
+        const valueEl = row.querySelector('.demo-field-value');
+        const statusEl = row.querySelector('.demo-field-status');
+        if (valueEl.textContent !== value || statusEl.textContent !== status) flashRow(row);
+        valueEl.textContent = value;
+        statusEl.textContent = status;
         row.dataset.tone = tone;
       }
     });
+  }
+
+  // 流程卡与介绍卡的一次性 reveal：IntersectionObserver，无 scroll listener。
+  // JS 不可用或用户偏好减少动效时，不加隐藏类，内容保持默认可见。
+  const revealTargets = document.querySelectorAll('[data-product-reveal]');
+  if (!prefersReducedMotion.matches && 'IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-revealed');
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0.2 });
+    for (const target of revealTargets) {
+      target.classList.add('is-pending');
+      observer.observe(target);
+    }
   }
 })();

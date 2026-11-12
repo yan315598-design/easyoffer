@@ -588,4 +588,3 @@ function getCopyItemsForCategory(profile, category) {
 
   return items;
 }
-
