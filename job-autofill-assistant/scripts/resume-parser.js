@@ -769,8 +769,7 @@ JSON schema 规范：
     "yearsOfWork": "",
     "lastNamePinyin": "",
     "firstNamePinyin": "",
-    "namePinyinFull": "",
-    "personalPromise": ""
+    "namePinyinFull": ""
   },
   "jobIntention": {
     "expectedCity": "",

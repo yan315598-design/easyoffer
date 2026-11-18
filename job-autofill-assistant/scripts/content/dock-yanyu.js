@@ -544,8 +544,8 @@ function createFloatingButton() {
     chrome.runtime.sendMessage({ action: 'updateSettings', settings: { uiTheme: next } }, () => { if (chrome.runtime.lastError) {} });
   });
   shadow.querySelector('[data-yy-action="settings"]').addEventListener('click', () => {
-    if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-    else chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+    runtimeSend({ action: 'openOptions', page: 'profile' }, 5000)
+      .catch(error => showNotification(error.message, 'warning'));
   });
   shadow.querySelector('[data-yy-action="feedback"]').addEventListener('click', async () => {
     const diagnostic = `易offer网申填写助手反馈\n版本：${chrome.runtime.getManifest().version}\n页面：${location.hostname}\n时间：${new Date().toISOString()}\n请描述问题（请勿粘贴身份证号、手机号、API Key 等隐私）：\n`;

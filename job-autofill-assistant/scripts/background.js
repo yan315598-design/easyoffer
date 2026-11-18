@@ -295,6 +295,12 @@ function dispatchMessage(request, sender, sendResponse) {
       handleAddProfile(request.name, request.sourceProfileId, sendResponse);
       return true;
 
+    case 'editResumeEntry':
+      storageManager.editResumeEntry(request)
+        .then(entries => sendResponse({ success: true, entries }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
+
     case 'updateProfile':
       handleUpdateProfile(request.profileId, request.updates, sendResponse);
       return true;
@@ -360,15 +366,18 @@ function dispatchMessage(request, sender, sendResponse) {
       handleParseResume(request.fileData, request.fileName, sendResponse);
       return true;
 
-    case 'openOptions':
-      if (['date', 'controls', 'entries', 'ai'].includes(request.article)) {
-        chrome.tabs.create({ url: chrome.runtime.getURL(`options/options.html#help-${request.article}`) })
+    case 'openOptions': {
+      const section = ['date', 'controls', 'entries', 'ai'].includes(request.article)
+        ? 'help-' + request.article : request.page === 'profile' ? 'profile-overview' : '';
+      if (section) {
+        chrome.tabs.create({ url: chrome.runtime.getURL(`options/options.html#${section}`) })
           .then(() => sendResponse({ success: true }), error => sendResponse({ success: false, error: error.message }));
         return true;
       }
       chrome.runtime.openOptionsPage();
       sendResponse({ success: true });
       return true;
+    }
 
     case 'aiGenerate':
       handleAiGenerate(request.prompt, request.systemPrompt, sendResponse, request.maxTokens);

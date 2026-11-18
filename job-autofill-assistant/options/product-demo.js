@@ -1,6 +1,6 @@
 /* Local product walkthrough. All example values are synthetic. */
 (() => {
-  const demo = document.getElementById('product-demo');
+  const demo = document.getElementById('fill-guide-template').content.querySelector('.product-demo');
   const descriptions = {
     local: '姓名、邮箱这类有明确对应值的字段，先由本地规则填入。',
     ai: '启用 AI 后，可以补匹配难识别的字段，也能根据简历里的经历为开放题起草答案。',
@@ -22,6 +22,20 @@
     }
   };
 
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // 字段内容变化时的轻反馈：仅 transform/opacity，180ms。
+  const flashRow = (row) => {
+    if (prefersReducedMotion.matches || typeof row.animate !== 'function') return;
+    row.animate(
+      [
+        { opacity: 0, transform: 'translateY(4px)' },
+        { opacity: 1, transform: 'none' }
+      ],
+      { duration: 180, easing: 'ease-out' }
+    );
+  };
+
   const steps = [...demo.querySelectorAll('[data-demo-stage]')];
   const explanation = demo.querySelector('.product-demo-explain');
   for (const button of steps) {
@@ -33,8 +47,11 @@
       explanation.textContent = descriptions[stage];
       for (const [field, [value, status, tone]] of Object.entries(examples[stage])) {
         const row = demo.querySelector(`[data-demo-field="${field}"]`);
-        row.querySelector('.demo-field-value').textContent = value;
-        row.querySelector('.demo-field-status').textContent = status;
+        const valueEl = row.querySelector('.demo-field-value');
+        const statusEl = row.querySelector('.demo-field-status');
+        if (valueEl.textContent !== value || statusEl.textContent !== status) flashRow(row);
+        valueEl.textContent = value;
+        statusEl.textContent = status;
         row.dataset.tone = tone;
       }
     });

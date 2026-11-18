@@ -174,9 +174,13 @@ function repeatControlValue(input) {
   return String(input.value || input.textContent || '').trim();
 }
 
-function repeatIdentityMatches(module, row, entries, minimumKeys = 1) {
-  const identity = row.fields.filter(({input,key}) => module.identity.includes(key) && fieldHasValue(input))
+function repeatRowIdentity(module, row) {
+  return row.fields.filter(({input,key}) => module.identity.includes(key) && fieldHasValue(input))
     .map(({input,key}) => ({ input, key, actual: repeatControlValue(input) })).filter(field => field.actual);
+}
+
+function repeatIdentityMatches(module, row, entries, minimumKeys = 1) {
+  const identity = repeatRowIdentity(module, row);
   if (new Set(identity.map(field => field.key)).size < minimumKeys) return [];
   return entries.filter(entry => identity.every(({input,key,actual}) => {
     const expected = repeatFieldValue(entry, key);

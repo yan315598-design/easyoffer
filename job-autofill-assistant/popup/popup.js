@@ -578,14 +578,6 @@ function bindEvents() {
     });
   }
 
-  // 配置按钮 - 打开配置页面
-  const settingsBtn = document.getElementById('settingsBtn');
-  if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => {
-      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
-    });
-  }
-
   for (const link of document.querySelectorAll('[data-workspace-link]')) {
     link.addEventListener('click', async event => {
       event.preventDefault();

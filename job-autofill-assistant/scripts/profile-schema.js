@@ -7,7 +7,7 @@ var profileSchema = {
     registeredAddressType: '户籍类型', religion: '宗教信仰', honor: '荣誉奖励', specialSkills: '特长', openToWork: '求职状态',
     permanentResidencePermit: '居住证号', jobSources: '招聘信息来源', foreignCitizenship: '是否取得外国国籍',
     relativesEmployed: '亲属在目标单位任职', yearsOfWork: '工作年限', lastNamePinyin: '姓拼音', firstNamePinyin: '名拼音',
-    namePinyinFull: '姓名全拼', personalPromise: '个人声明/承诺',
+    namePinyinFull: '姓名全拼',
     archiveOrganization: '人事档案所在单位', professionalTitle: '专业技术职称', homeAddress: '家庭现居地址',
     birthPlace: '出生地', childhoodCity: '童年时所在城市', interests: '兴趣爱好', specialSkillProficiency: '首项技能熟练程度'
   },
@@ -191,8 +191,17 @@ function mergeProfile(old, updates) {
   }
   return merged;
 }
+// 保留老备份中的承诺原值，仅在页面取用资料时丢弃。
+function basicInfoForUse(info) {
+  if (!info || !Object.hasOwn(info, 'personalPromise')) return info;
+  const copy = { ...info };
+  delete copy.personalPromise;
+  return copy;
+}
 function profileWithoutFiles(profile) {
-  return JSON.parse(JSON.stringify(profile, (key, value) => ['resumeFile', 'attachments', 'attachmentContents', 'dataUrl'].includes(key) ? undefined : value));
+  const copy = JSON.parse(JSON.stringify(profile, (key, value) => ['resumeFile', 'attachments', 'attachmentContents', 'dataUrl'].includes(key) ? undefined : value));
+  if (copy?.basicInfo) copy.basicInfo = basicInfoForUse(copy.basicInfo);
+  return copy;
 }
 
 function profileSkillEntries(profile) {
@@ -231,6 +240,7 @@ function isInternshipRecord(item) { return /实习|intern/i.test(item?.workType 
 function profileForFilling(profile) {
   if (!profile) return profile;
   const copy = JSON.parse(JSON.stringify(profile));
+  if (copy.basicInfo) copy.basicInfo = basicInfoForUse(copy.basicInfo);
   const aiTools = copy.commonAnswers?.aiTools;
   for (const key of resumeOptionalModules) {
     if (resumeModuleEnabled(copy, key)) continue;

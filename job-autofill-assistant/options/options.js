@@ -740,6 +740,7 @@ async function loadAISettings() {
 }
 
 function loadProfileToForm(profile) {
+  parsedEntrySections.clear();
   const info = profile.basicInfo || {};
   setInputValue('fullName', info.fullName);
   setInputValue('firstName', info.firstName);
@@ -837,8 +838,7 @@ function enhanceItemCard(card, entryId) {
   card.appendChild(body);
 }
 
-function renderEducationList(educationList) {
-  const container = document.getElementById('educationList');
+function renderEducationList(educationList, container = document.getElementById('educationList')) {
   container.innerHTML = '';
 
   educationList.forEach((edu, index) => {
@@ -952,15 +952,14 @@ function renderEducationList(educationList) {
   });
 
   container.querySelectorAll('.btn-delete[data-type="education"]').forEach((btn) => {
-    btn.addEventListener('click', (e) => deleteEducation(e.currentTarget.getAttribute('data-id')));
+    btn.addEventListener('click', (e) => deleteResumeEntry('education', e.currentTarget.getAttribute('data-id')));
   });
 
   syncExperienceOrder(container);
   initAllAppleSelects(container);
 }
 
-function renderWorkList(workList) {
-  const container = document.getElementById('workList');
+function renderWorkList(workList, container = document.getElementById('workList')) {
   container.innerHTML = '';
 
   workList.forEach((work, index) => {
@@ -1030,7 +1029,7 @@ function renderWorkList(workList) {
   });
 
   container.querySelectorAll('.btn-delete[data-type="work"]').forEach((btn) => {
-    btn.addEventListener('click', (e) => deleteWorkExperience(e.currentTarget.getAttribute('data-id')));
+    btn.addEventListener('click', (e) => deleteResumeEntry(workspaceModule === 'internship' ? 'internship' : 'work', e.currentTarget.getAttribute('data-id')));
   });
 
   syncExperienceOrder(container);
@@ -1038,8 +1037,7 @@ function renderWorkList(workList) {
   applyWorkModuleFilter();
 }
 
-function renderProjectList(projectList) {
-  const container = document.getElementById('projectList');
+function renderProjectList(projectList, container = document.getElementById('projectList')) {
   container.innerHTML = '';
 
   projectList.forEach((project, index) => {
@@ -1117,7 +1115,7 @@ function renderProjectList(projectList) {
   });
 
   container.querySelectorAll('.btn-delete[data-type="project"]').forEach((btn) => {
-    btn.addEventListener('click', (e) => deleteProject(e.currentTarget.getAttribute('data-id')));
+    btn.addEventListener('click', (e) => deleteResumeEntry('projects', e.currentTarget.getAttribute('data-id')));
   });
 
   syncExperienceOrder(container);
@@ -1148,6 +1146,12 @@ function syncExperienceOrder(container) {
 }
 
 function moveExperience(button) {
+  const inlineModule = button.closest('.overview-card')?.dataset.module;
+  if (ENTRY_MODULES[inlineModule]) {
+    moveResumeEntry(inlineModule, button);
+    return;
+  }
+  const originalY = button.getBoundingClientRect().top;
   const preview = button.closest('.experience-preview');
   const direction = button.dataset.moveEntry;
   const forward = direction === 'down';
@@ -1176,9 +1180,9 @@ function moveExperience(button) {
     const moved = [...document.querySelectorAll(`#profileOverview [data-module="${scope}"] .experience-preview`)]
       .find(entry => entry.dataset.entryId === id);
     const next = moved?.querySelector(`[data-move-entry="${direction}"]:not(:disabled)`);
-    (next || moved?.querySelector('[data-move-entry]:not(:disabled)'))?.focus({ preventScroll: true });
+    followEntry(moved, next || moved?.querySelector('[data-move-entry]:not(:disabled)'), originalY);
   } else {
-    (button.disabled ? card.querySelector('[data-move-entry]:not(:disabled)') : button)?.focus({ preventScroll: true });
+    followEntry(card, button.disabled ? card.querySelector('[data-move-entry]:not(:disabled)') : button, originalY);
   }
 }
 
@@ -1511,6 +1515,16 @@ function bindEvents() {
   // 工作台头部动作与缺失项快捷改用 [data-goto-module]，避免选择器歧义。
   document.getElementById('backToOverviewBtn')?.addEventListener('click', () => navigateWorkspace('overview'));
   document.getElementById('profileOverview')?.addEventListener('click', (e) => {
+    const moduleKey = e.target.closest('.overview-card')?.dataset.module;
+    if (ENTRY_MODULES[moduleKey]) {
+      const row = e.target.closest('.experience-preview');
+      if (e.target.closest('[data-edit-entry]')) openResumeEntry(moduleKey, row.dataset.entryId);
+      if (e.target.closest('[data-add-entry]')) openResumeEntry(moduleKey);
+      if (e.target.closest('[data-delete-entry]')) deleteResumeEntry(moduleKey, row.dataset.entryId);
+      if (e.target.closest('[data-save-entry]')) commitResumeEntry();
+      if (e.target.closest('[data-cancel-entry]') && !entryWritePending) closeResumeEntry();
+      return;
+    }
     const row = e.target.closest('[data-edit-entry]')?.closest('.experience-preview');
     if (row) {
       const module = row.closest('[data-module]').dataset.module;
@@ -1535,9 +1549,9 @@ function bindEvents() {
     if (e.target.closest('[data-create-profile]')) addNewProfile();
   });
 
-  document.getElementById('addEducationBtn').addEventListener('click', () => addEducation());
-  document.getElementById('addWorkBtn').addEventListener('click', () => addWorkExperience());
-  document.getElementById('addProjectBtn').addEventListener('click', () => addProject());
+  document.getElementById('addEducationBtn').addEventListener('click', () => openResumeEntry('education'));
+  document.getElementById('addWorkBtn').addEventListener('click', () => openResumeEntry(workspaceModule === 'internship' ? 'internship' : 'work'));
+  document.getElementById('addProjectBtn').addEventListener('click', () => openResumeEntry('projects'));
   const addAwardBtn = document.getElementById('addAwardBtn');
   if (addAwardBtn) addAwardBtn.addEventListener('click', () => addAward());
   document.getElementById('addFamilyBtn')?.addEventListener('click', addFamilyMember);
@@ -1693,6 +1707,7 @@ function bindEvents() {
   for (const eventName of ['input', 'change']) {
     document.getElementById('view-profile').addEventListener(eventName, event => {
       const input = event.target;
+      if (input.closest('.entry-draft')) return;
       if (!input.matches('input,select,textarea') || input.type === 'file' || input.closest('#section-ai,#section-parser,.module-tiles')) return;
       debouncedSave();
       if (eventName === 'change' && input.matches('.work-type')) applyWorkModuleFilter();
@@ -1700,7 +1715,7 @@ function bindEvents() {
   }
   window.addEventListener('blur', () => { if (profileDirty) flushProfileSave(); });
   window.addEventListener('beforeunload', event => {
-    if (!profileDirty && (savedAiSettingsFingerprint === null ||
+    if (!entryDraftChanged() && !entryWritePending && !profileDirty && (savedAiSettingsFingerprint === null ||
         savedAiSettingsFingerprint === JSON.stringify(collectAiSettingsFromDom()))) return;
     event.preventDefault();
     event.returnValue = '';
@@ -1708,7 +1723,10 @@ function bindEvents() {
 }
 
 async function switchProfile(profileId) {
-  if (!await flushProfileSave()) return;
+  if (!leaveResumeEntry() || !await flushProfileSave()) {
+    document.getElementById('profileSelect').value = activeProfileId;
+    return;
+  }
   const response = await sendMessage({ action: 'setActiveProfile', profileId });
   if (response.success) {
     clearSelectedAiResumeFile();
@@ -1719,7 +1737,7 @@ async function switchProfile(profileId) {
 
 async function addNewProfile() {
   const creation = await chooseNewProfile(allProfiles, activeProfileId);
-  if (!creation || !await flushProfileSave()) return;
+  if (!creation || !leaveResumeEntry() || !await flushProfileSave()) return;
   const response = await sendMessage({ action: 'addProfile', ...creation });
   if (!response?.success) {
     showToast(response?.error || '创建简历失败，请重试', 'error');
@@ -1771,9 +1789,9 @@ async function renameCurrentProfile() {
   }
 }
 
-function collectEducationData() {
+function collectEducationData(root = document.getElementById('educationList')) {
   const education = [];
-  document.querySelectorAll('#educationList .item-card').forEach((card) => {
+  root.querySelectorAll('.item-card').forEach((card) => {
     education.push({
       ...readExtendedFields(card),
       id: card.querySelector('.edu-school').getAttribute('data-id') || generateId(),
@@ -1794,9 +1812,9 @@ function collectEducationData() {
   return education;
 }
 
-function collectWorkData() {
+function collectWorkData(root = document.getElementById('workList')) {
   const work = [];
-  document.querySelectorAll('#workList .item-card').forEach((card) => {
+  root.querySelectorAll('.item-card').forEach((card) => {
     work.push({
       ...readExtendedFields(card),
       id: card.querySelector('.work-company').getAttribute('data-id') || generateId(),
@@ -1814,9 +1832,9 @@ function collectWorkData() {
   return work;
 }
 
-function collectProjectData() {
+function collectProjectData(root = document.getElementById('projectList')) {
   const projects = [];
-  document.querySelectorAll('#projectList .item-card').forEach((card) => {
+  root.querySelectorAll('.item-card').forEach((card) => {
     const tech = card.querySelector('.proj-tech')?.value.trim() || '';
     projects.push({
       ...readExtendedFields(card),
@@ -1955,7 +1973,12 @@ function saveProfile({ silent = false } = {}) {
   }
   clearTimeout(profileSaveTimer);
   const settings = collectAiSettingsFromDom();
-  const snapshot = { silent, profileId: activeProfileId, updates: structuredClone(collectProfileUpdates()),
+  const updates = structuredClone(collectProfileUpdates());
+  // 逐条编辑独立提交。保存基础资料时不携带可能早已过期的经历列表。
+  for (const key of ['education', 'workExperience', 'projects']) {
+    if (!parsedEntrySections.has(key)) delete updates[key];
+  }
+  const snapshot = { silent, profileId: activeProfileId, updates,
     settings: JSON.stringify(settings) === savedAiSettingsFingerprint ? null : settings, revision: profileEditRevision };
   pendingProfileSave = pendingProfileSave.catch(() => false).then(() => persistProfile(snapshot));
   return pendingProfileSave;
@@ -1984,6 +2007,10 @@ async function flushProfileSave() {
 chrome.runtime.onMessage.addListener((request, _sender, respond) => {
   if (!editorDocumentId || request.documentId !== editorDocumentId) return;
   if (request.action === 'flushProfileEditor') {
+    if (request.importing && (entryDraft || entryWritePending)) {
+      respond({ success: false, error: '请先完成或取消当前经历的编辑，再导入备份' });
+      return;
+    }
     if (request.importing) document.body.inert = true;
     flushProfileSave().then(success => respond({ success })).catch(error => respond({ success: false, error: error.message }));
     return true;
@@ -2117,6 +2144,7 @@ async function persistProfile({ silent, profileId, updates, settings, revision }
       if (profileId === activeProfileId && revision === profileEditRevision) {
         currentProfile = mergeProfile(currentProfile || {}, { ...updates, id: profileId });
         profileDirty = false;
+        for (const key of parsedEntrySections) if (Object.hasOwn(updates, key)) parsedEntrySections.delete(key);
       }
       if (typeof appLog !== 'undefined') appLog.success('options', 'profile.save', silent ? '资料已静默保存' : '资料已保存');
       if (!silent) showToast('资料与设置已保存', 'success');
@@ -2130,78 +2158,6 @@ async function persistProfile({ silent, profileId, updates, settings, revision }
     showToast('保存失败: ' + error.message, 'error');
     return false;
   }
-}
-
-function addEducation() {
-  if (!currentProfile) return;
-  currentProfile.education = collectEducationData();
-  currentProfile.education.push(emptyEducation());
-  renderEducationList(currentProfile.education);
-  debouncedSave();
-}
-
-async function deleteEducation(eduId) {
-  const ok = await showAppleConfirm({
-    title: '删除教育经历',
-    subtitle: '确定要删除这条教育背景信息吗？删除后需手动重新填写',
-    confirmText: '确定删除',
-    isDanger: true
-  });
-  if (!ok) return;
-  currentProfile.education = collectEducationData().filter((item) => item.id !== eduId);
-  if (currentProfile.education.length === 0) currentProfile.education.push(emptyEducation());
-  renderEducationList(currentProfile.education);
-  debouncedSave();
-}
-
-function addWorkExperience() {
-  if (!currentProfile) return;
-  currentProfile.workExperience = collectWorkData();
-  const entry = emptyWork();
-  if (workspaceModule === 'internship') entry.workType = '实习';
-  currentProfile.workExperience.push(entry);
-  renderWorkList(currentProfile.workExperience);
-  debouncedSave();
-}
-
-async function deleteWorkExperience(workId) {
-  const ok = await showAppleConfirm({
-    title: '删除工作经历',
-    subtitle: '确定要删除这条工作/实习经历记录吗？',
-    confirmText: '确定删除',
-    isDanger: true
-  });
-  if (!ok) return;
-  currentProfile.workExperience = collectWorkData().filter((item) => item.id !== workId);
-  if (currentProfile.workExperience.length === 0) {
-    const entry = emptyWork();
-    if (workspaceModule === 'internship') entry.workType = '实习';
-    currentProfile.workExperience.push(entry);
-  }
-  renderWorkList(currentProfile.workExperience);
-  debouncedSave();
-}
-
-function addProject() {
-  if (!currentProfile) return;
-  currentProfile.projects = collectProjectData();
-  currentProfile.projects.push(emptyProject());
-  renderProjectList(currentProfile.projects);
-  debouncedSave();
-}
-
-async function deleteProject(projectId) {
-  const ok = await showAppleConfirm({
-    title: '删除项目经历',
-    subtitle: '确定要删除这条项目经历记录吗？',
-    confirmText: '确定删除',
-    isDanger: true
-  });
-  if (!ok) return;
-  currentProfile.projects = collectProjectData().filter((item) => item.id !== projectId);
-  if (currentProfile.projects.length === 0) currentProfile.projects.push(emptyProject());
-  renderProjectList(currentProfile.projects);
-  debouncedSave();
 }
 
 function addAward() {
@@ -2558,18 +2514,21 @@ function fillParsedData(data) {
 
   // 教育背景
   if (data.education && data.education.length) {
+    parsedEntrySections.add('education');
     currentProfile.education = data.education.map((item) => ({ ...emptyEducation(), ...item, id: generateId() }));
     renderEducationList(currentProfile.education);
   }
 
   // 工作经历
   if (data.workExperience && data.workExperience.length) {
+    parsedEntrySections.add('workExperience');
     currentProfile.workExperience = data.workExperience.map((item) => ({ ...emptyWork(), ...item, id: generateId() }));
     renderWorkList(currentProfile.workExperience);
   }
 
   // 项目经历
   if (data.projects && data.projects.length) {
+    parsedEntrySections.add('projects');
     currentProfile.projects = data.projects.map((item) => ({ ...emptyProject(), ...item, id: generateId() }));
     renderProjectList(currentProfile.projects);
   }
@@ -2611,7 +2570,7 @@ async function deleteCurrentProfile() {
     confirmText: '确定删除',
     isDanger: true
   });
-  if (!ok) return;
+  if (!ok || !leaveResumeEntry()) return;
   clearTimeout(profileSaveTimer);
   profileDirty = false;
   const response = await sendMessage({ action: 'deleteProfile', profileId: activeProfileId });
@@ -2803,7 +2762,7 @@ function initSidebarNav() {
 
 function initProfileNavigation() {
   function showFromHash() {
-    if (/^#(product|tracker|help|settings)(?:$|[/?-])/.test(location.hash)) return;
+    if (!location.hash || /^#(product|tracker|help|settings)(?:$|[/?-])/.test(location.hash)) return;
     const match = window.location.hash.match(/^#(section|view)-([A-Za-z0-9_-]+)$/);
     showWorkspaceModule(match?.[2], match?.[1] === 'section');
   }
@@ -2838,7 +2797,7 @@ function appendExtendedFields(root, section, values = {}, keys = extendedFieldKe
     group.dataset.field = key;
     const caption = document.createElement('label');
     caption.textContent = profileSchema[section][key];
-    const yesNo = ['fullTime', 'highestFullTime', 'overseasEducation', 'acceptAdjustment', 'acceptCounty', 'referred', 'personalPromise'].includes(key) || (section === 'declarations' && key === 'answer');
+    const yesNo = ['fullTime', 'highestFullTime', 'overseasEducation', 'acceptAdjustment', 'acceptCounty', 'referred'].includes(key) || (section === 'declarations' && key === 'answer');
     const choices = yesNo ? ['是', '否'] :
       section === 'awards' && key === 'category' ? ['竞赛获奖', '奖学金', '其他'] :
       section === 'languageCertificates' && ['proficiency', 'listeningSpeaking', 'readingWriting'].includes(key) ?
@@ -3295,7 +3254,7 @@ function showWorkspaceModule(moduleKey, edit = false) {
   const enabled = !currentProfile || resumeModuleEnabled(currentProfile, moduleKey);
   const target = Object.hasOwn(WORKSPACE_MODULE_TITLES, moduleKey) && enabled ? moduleKey : 'overview';
   workspaceModule = target;
-  workspaceEditing = target !== 'overview' && (edit || ['ai', 'parser', 'actions', 'modules', 'dates'].includes(target));
+  workspaceEditing = !ENTRY_MODULES[target] && target !== 'overview' && (edit || ['ai', 'parser', 'actions', 'modules', 'dates'].includes(target));
   ensureModuleManagement();
   const editorTarget = target === 'internship' ? 'work' : target;
   if (editorTarget === 'work') {
@@ -3322,10 +3281,12 @@ function showWorkspaceModule(moduleKey, edit = false) {
 }
 
 function navigateWorkspace(moduleKey, edit = false) {
+  if (!leaveResumeEntry()) return false;
   showWorkspaceModule(moduleKey, edit);
   history.replaceState(null, null, workspaceModule === 'overview'
     ? '#profile-overview' : `#${workspaceEditing ? 'section' : 'view'}-${workspaceModule}`);
   document.dispatchEvent(new Event('yanyu-section-change'));
+  return true;
 }
 
 async function finishWorkspaceEdit() {
@@ -3410,6 +3371,7 @@ function refreshSidebarModules() {
 }
 
 function enableExtraModule(moduleKey) {
+  if (!leaveResumeEntry()) return;
   if (!WORKSPACE_MODULE_TITLES[moduleKey] || !WORKSPACE_EXTRA_KEYS.includes(moduleKey)) return;
   currentProfile.moduleConfig = resumeModuleConfig(currentProfile);
   currentProfile.moduleConfig.enabled[moduleKey] = true;
@@ -3472,28 +3434,32 @@ function overviewCardHtml(moduleKey, title, bodyHtml, entryCount) {
   return `<section class="overview-card" data-module="${attr(moduleKey)}">
     <header class="overview-card-header">
       <h3 class="overview-card-title">${html(title)}${entryCount ? `<span class="ov-count">${entryCount} 条</span>` : ''}</h3>
-      <button type="button" class="overview-edit" data-edit-module="${attr(moduleKey)}">编辑</button>
+      ${ENTRY_MODULES[moduleKey]
+        ? `<button type="button" class="overview-edit" data-add-entry="${attr(moduleKey)}">＋ 添加${html(title)}</button>`
+        : `<button type="button" class="overview-edit" data-edit-module="${attr(moduleKey)}">编辑</button>`}
     </header>
-    <div class="overview-card-body">${bodyHtml || '<p class="ov-empty">暂无内容，点击「编辑」补充。</p>'}</div>
+    <div class="overview-card-body">${bodyHtml || `<p class="ov-empty">${ENTRY_MODULES[moduleKey] ? '尚未添加' + html(title) : '暂无内容，点击「编辑」补充。'}</p>`}</div>
   </section>`;
 }
 
-function overviewExperienceList(entries, details) {
+function overviewExperienceList(entries, details, editable = false) {
   return entries.map((entry, index) => {
     const { title, meta, descriptions } = details(entry);
     const date = [entry.startDate, entry.endDate].filter(Boolean).join(' 至 ');
     const text = descriptions.filter(([, value]) => String(value || '').trim())
-      .map(([label, value]) => String(value).length > 120
+      .map(([label, value]) => !editable && String(value).length > 120
         ? `<details class="experience-copy"><summary>${html(label)}</summary><p>${html(value)}</p></details>`
         : `<div class="experience-copy"><strong>${html(label)}</strong><p>${html(value)}</p></div>`).join('');
     return `<article class="experience-preview" data-entry-id="${attr(entry.id)}">
       <header class="experience-preview-header">
-        <h4>${html(title || '未命名经历')}</h4>
+        <h4>${editable ? `<span class="item-index">${String(index + 1).padStart(2, '0')}</span> ` : ''}${html(title || '未命名经历')}</h4>
         ${date ? `<p class="experience-period">${html(date)}</p>` : ''}
       </header>
       ${meta.filter(Boolean).length ? `<p class="experience-meta">${html(meta.filter(Boolean).join(' · '))}</p>` : ''}
-      ${text}
-      <div class="experience-order">${experienceOrderButtons(index, entries.length)}<button type="button" data-edit-entry>编辑</button></div>
+      ${editable && descriptions.some(([, value]) => String(value || '').trim())
+        ? `<p class="entry-excerpt">${html(descriptions.find(([, value]) => String(value || '').trim())[1])}</p>
+          <details class="entry-details"><summary>查看详情</summary>${text}</details>` : text}
+      <div class="experience-order">${experienceOrderButtons(index, entries.length)}<button type="button" data-edit-entry>编辑</button>${editable ? '<button type="button" data-delete-entry>删除</button>' : ''}</div>
     </article>`;
   }).join('');
 }
@@ -3620,7 +3586,7 @@ function renderProfileOverview() {
   const educationBody = overviewExperienceList(education, (edu) => ({
     title: edu.school || edu.major, meta: [edu.degree, edu.college, edu.major],
     descriptions: [['主修课程', edu.courses], ['在校经历', edu.description]]
-  }));
+  }), true);
   const workBody = overviewExperienceList(work, (item) => ({
     title: item.company || item.position, meta: [item.position, item.workType, item.city],
     descriptions: [['主要职责', item.description], ['成果', item.achievements]]
@@ -3628,7 +3594,7 @@ function renderProfileOverview() {
   const projectsBody = overviewExperienceList(projects, (item) => ({
     title: item.name, meta: [item.role, item.projectType, item.techStack],
     descriptions: [['项目介绍', item.description], ['项目职责', item.responsibilities], ['项目成果', item.achievements]]
-  }));
+  }), true);
 
   const skills = profileSkillEntries(snapshot).filter(skill => skill.name || skill.proficiency || skill.category || skill.description);
   const attachments = currentProfile?.attachments || {};
@@ -3681,13 +3647,14 @@ function renderProfileOverview() {
   cards.set('aiTools', overviewCardHtml('aiTools', 'AI 工具应用', overviewRow('应用经验', snapshot.commonAnswers?.aiTools)));
   for (const key of ['work', 'internship']) {
     const entries = work.filter(item => isInternshipRecord(item) === (key === 'internship'));
-    cards.set(key, overviewCardHtml(key, WORKSPACE_MODULE_TITLES[key], overviewExperienceList(entries, item => ({title:item.company || item.position, meta:[item.position,item.workType,item.city], descriptions:[['主要职责',item.description],['成果',item.achievements]]})), entries.length));
+    cards.set(key, overviewCardHtml(key, WORKSPACE_MODULE_TITLES[key], overviewExperienceList(entries, item => ({title:item.company || item.position, meta:[item.position,item.workType,item.city], descriptions:[['主要职责',item.description],['成果',item.achievements]]}), true), entries.length));
   }
   for (const key of cards.keys()) if (!resumeModuleEnabled(snapshot, key)) cards.delete(key);
   const contents = workspaceModule === 'overview'
     ? overviewWorkbenchHtml(snapshot) + [...cards.values()].join('')
     : cards.get(workspaceModule) || overviewCardHtml(workspaceModule, WORKSPACE_MODULE_TITLES[workspaceModule], '');
   root.innerHTML = `<div class="overview-grid">${contents}</div>`;
+  mountResumeDraft();
   updateRailProfileCard();
 }
 

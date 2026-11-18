@@ -7,113 +7,262 @@ const Sidebar = (() => {
   let catalog = {};
   let fullCatalog = {};
   let catalogRevision = 0;
-  let category = 'basic';
+  let browseModule = '';
+  let openRecord = '';
+  let catalogProfileId = '';
+  let previewSession = null;
   let lastResult = null;
   let taskRunning = false;
   let revision = 0;
   let refreshTimer;
 
   function showTarget(next) {
+    if (target && next && JSON.stringify(target) === JSON.stringify(next)) return;
     if (target?.id !== next?.id) {
-      el('quickNotice').textContent = '';
-      if (next?.section && !el('quickSearch').value) {
-        const related = Object.keys(catalog).find(key => catalog[key].some(group => group.section === next.section));
-        if (related) selectCategory(related);
-      }
+      clearNotices();
     }
     target = next;
     const box = el('quickTarget');
-    box.classList.toggle('has-target', Boolean(next));
     const restricted = tab && (!tab.url || ContentReady.isRestrictedUrl(tab.url));
-    el('quickResults').setAttribute('data-copy-only', String(Boolean(restricted)));
+    box.classList.toggle('has-target', Boolean(next));
+    for (const list of document.querySelectorAll('.sidebar-quick-results')) list.dataset.copyOnly = String(Boolean(restricted));
     box.querySelector('strong').textContent = next ? '填入目标 · ' + next.label : restricted ? '复制后粘贴' : '先选一个网页字段';
     box.querySelector('span').textContent = next ? [next.row, next.kind].filter(Boolean).join(' · ') : restricted
-      ? '浏览器保护内置页面和其他扩展。点击资料旁的「复制」，再到目标输入框按 Ctrl+V 或 ⌘V。'
-      : '点击网页输入框，或用 Tab 移到该字段。你也可以只复制资料。';
-    box.title = next?.label || '';
+      ? '此页面可从资料速查复制后粘贴。' : '点网页输入框查看候选，或按模块找资料。';
     drawCatalog();
   }
 
-  function selectCategory(key) {
-    category = key;
-    for (const button of el('quickCategories').children) button.setAttribute('aria-pressed', String(button.dataset.quick === key));
+  function sidebarView(view) {
+    document.querySelector('.container').dataset.view = view;
+    for (const button of document.querySelectorAll('[data-sidebar-view]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.sidebarView === view));
+    }
+    window.scrollTo(0, 0);
+  }
+
+  function makeElement(tag, text, className) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function makeButton(text, action) {
+    const node = makeElement('button', text);
+    node.type = 'button';
+    node.addEventListener('click', action);
+    return node;
+  }
+
+  function directoryName(group) {
+    if (group.section === 'workExperience') return isInternshipRecord(group.entry) ? '实习经历' : '工作经历';
+    return group.heading || group.title;
+  }
+
+  const normalize = value => String(value ?? '').normalize('NFKC').toLowerCase().trim();
+  const fieldName = value => normalize(value).replace(/[\s:：*（）()·_-]/g, '');
+  const aliases = [
+    ['项目职责', '项目中职责', '我的职责', '本人职责', '个人职责', '职责分工'],
+    ['学校', '学校名称', '毕业院校', '毕业学校', '院校名称'],
+    ['生日', '出生日期', '出生年月日', '出生年月', 'birthday', 'dateofbirth', 'dob'],
+    ['电子邮箱', '邮箱', 'email', 'emailaddress'],
+    ['手机号', '手机号码', '联系电话', '移动电话', 'mobile', 'phone'],
+    ['姓名', '真实姓名', '本人姓名', 'fullname'],
+    ['项目成果', '项目成效', '项目业绩'], ['项目描述', '项目介绍', '项目简介', '项目背景'],
+    ['项目角色', '担任角色'], ['专业名称', '所学专业', '专业']
+  ];
+
+  function clearNotices() {
+    el('quickNotice').textContent = '';
+    el('quickBrowseNotice').textContent = '';
+  }
+
+  function actionNotice(button) {
+    return el(button.closest('#quickResults') ? 'quickBrowseNotice' : 'quickNotice');
+  }
+
+  function recommended(groups) {
+    if (!target) return [];
+    const labels = [target.label, FIELD_LABELS[target.fieldType]].filter(Boolean).map(fieldName);
+    const equivalents = new Set(labels);
+    for (const names of aliases) {
+      if (names.some(name => equivalents.has(name))) names.forEach(name => equivalents.add(name));
+    }
+    const candidates = [];
+    for (const group of groups) {
+      if (group.copyOnly || (target.section && group.section !== target.section)) continue;
+      // With no record context, prefer personal fields over same-named family fields.
+      if (!target.section && group.section === 'familyMembers' && !/家庭|家属|亲属/.test(target.label)) continue;
+      const items = group.items.filter(item => !item.copyOnly && (
+        (target.key && target.section) ? item.key === target.key : equivalents.has(fieldName(item.label))
+      ));
+      if (items.length) candidates.push({ ...group, items });
+    }
+    const identity = Object.entries(target.identity || {}).filter(([, value]) => normalize(value));
+    if (target.section && identity.length) {
+      const matches = candidates.filter(group => identity.every(([key, value]) =>
+        normalize(group.entry?.[key]) === normalize(value)));
+      if (matches.length === 1) return [matches[0], ...candidates.filter(group => group !== matches[0])];
+    }
+    return candidates;
+  }
+
+  function valueRow(group, item) {
+    const row = makeElement('article', '', 'sidebar-value');
+    row.append(makeElement('h3', item.label));
+    const value = makeElement('p', item.val);
+    if (item.block || item.val.length > 100 || item.val.includes('\n')) {
+      const preview = makeElement('p', item.val, 'sidebar-snippet');
+      const details = document.createElement('details');
+      details.className = 'sidebar-full-text';
+      details.append(makeElement('summary', '查看全文'), value);
+      row.append(preview, details);
+    } else {
+      row.append(value);
+    }
+    const controls = makeElement('div', '', 'sidebar-value-actions');
+    if (!group.copyOnly && !item.copyOnly) {
+      const write = makeButton('填入', () => writeValue(item, write));
+      write.dataset.write = '';
+      write.disabled = !target || taskRunning;
+      write.setAttribute('aria-label', '填入' + item.label);
+      controls.append(write);
+    }
+    const copy = makeButton('复制', async () => {
+      const notice = actionNotice(copy);
+      clearNotices();
+      try {
+        await navigator.clipboard.writeText(item.val);
+        notice.textContent = '已复制' + item.label;
+      } catch {
+        notice.textContent = '复制失败，可以选中资料文字手动复制。';
+      }
+    });
+    copy.setAttribute('aria-label', '复制' + item.label);
+    controls.append(copy);
+    row.append(controls);
+    return row;
+  }
+
+  function recordContents(group) {
+    const body = document.createDocumentFragment();
+    for (const item of group.items) body.append(valueRow(group, item));
+    if (group.entry && group.section === target?.section && !group.copyOnly) {
+      const preview = makeButton('预览整条', () => previewEntry(group, actionNotice(preview)));
+      preview.dataset.write = '';
+      preview.className = 'sidebar-preview-entry';
+      preview.disabled = taskRunning;
+      body.append(preview);
+    }
+    return body;
+  }
+
+  function renderRecord(group, collapse) {
+    if (collapse && group.entry) {
+      const record = makeElement('details', '', 'sidebar-record');
+      record.open = group.recordKey === openRecord;
+      const summary = makeElement('summary', group.title);
+      record.append(summary);
+      if (record.open) record.append(recordContents(group));
+      summary.addEventListener('click', event => {
+        event.preventDefault();
+        openRecord = record.open ? '' : group.recordKey;
+        drawDirectory();
+        const summaryAfter = [...el('quickResults').querySelectorAll('details[data-record-key]')]
+          .find(node => node.dataset.recordKey === group.recordKey)?.querySelector('summary');
+        summaryAfter?.focus({ preventScroll: true });
+        summaryAfter?.scrollIntoView({ block: 'nearest' });
+      });
+      record.dataset.recordKey = group.recordKey;
+      return record;
+    }
+    const record = makeElement('section', '', 'sidebar-record');
+    const header = document.createElement('header');
+    const title = group.entry ? directoryName(group) + ' · ' + group.title : group.title;
+    const heading = document.createElement('h2');
+    if (group.entry) {
+      const select = makeButton(title, () => {
+        browseModule = directoryName(group);
+        openRecord = group.recordKey;
+        el('quickSearch').value = '';
+        drawDirectory();
+        const summary = el('quickResults').querySelector('.sidebar-record[open] > summary');
+        summary?.focus({ preventScroll: true });
+        summary?.scrollIntoView({ block: 'nearest' });
+      });
+      select.className = 'sidebar-open-record';
+      select.title = '展开并连续使用这条资料';
+      heading.append(select);
+    } else {
+      heading.textContent = title;
+    }
+    header.append(heading);
+    record.append(header, recordContents(group));
+    return record;
+  }
+
+  function drawCandidates() {
+    const list = el('quickCandidates');
+    const candidates = recommended(Object.values(catalog).flat());
+    list.replaceChildren(...candidates.map(group => renderRecord(group, false)));
+    if (target && !candidates.length) {
+      list.append(makeElement('p', '当前简历没有匹配的资料，可在下方搜索或浏览。', 'sidebar-empty'));
+    }
+    list.scrollTop = 0;
   }
 
   function drawCatalog() {
+    drawCandidates();
+    drawDirectory();
+  }
+
+  function drawDirectory() {
     const list = el('quickResults');
-    const query = el('quickSearch').value.trim().toLowerCase();
-    const source = el('quickAll').checked ? fullCatalog : catalog;
-    const groups = (query ? Object.values(source).flat() : source[category] || []).map(group => ({
-      ...group, items: group.items.filter(item => !query || `${group.title} ${group.heading || ''} ${item.label} ${item.val}`.toLowerCase().includes(query))
-    })).filter(group => group.items.length).sort((a, b) => Number(b.section === target?.section && !!b.section) - Number(a.section === target?.section && !!a.section));
+    const query = normalize(el('quickSearch').value);
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const searchTerms = tokens.map(token => aliases.find(names => names.includes(fieldName(token))) || [token]);
+    const groups = Object.values(el('quickAll').checked ? fullCatalog : catalog).flat();
     const fragment = document.createDocumentFragment();
-    for (const group of groups) {
-      const section = document.createElement('section');
-      section.className = 'sidebar-record';
-      const header = document.createElement('header');
-      const heading = document.createElement('h2');
-      heading.textContent = group.heading ? `${group.heading} · ${group.title}` : group.title;
-      header.append(heading);
-      if (group.section && group.section === target?.section && !group.copyOnly) {
-        const whole = document.createElement('button');
-        whole.type = 'button';
-        whole.textContent = '预览整条';
-        whole.dataset.write = '';
-        whole.disabled = taskRunning;
-        whole.onclick = () => previewEntry(group);
-        header.append(whole);
+    const matches = tokens.length ? groups.map(group => {
+      const context = normalize(directoryName(group) + ' ' + group.title);
+      // A record-name-only search yields a compact result. Its heading opens all fields.
+      if (group.entry && tokens.every(token => context.includes(token))) {
+        const label = group.items.find(item => item.val === group.title) || group.items[0];
+        return { ...group, items: [label] };
       }
-      section.append(header);
-      for (const item of [...group.items].sort((a, b) => Number(!!target?.key && b.key === target.key) - Number(!!target?.key && a.key === target.key))) {
-      const row = document.createElement('article');
-      row.className = 'sidebar-value';
-      const title = document.createElement('h3');
-      title.textContent = item.label;
-      const value = document.createElement('p');
-      value.textContent = item.val;
-      if (item.block) {
-        value.className = 'sidebar-long-value';
-        const fullText = document.createElement('details');
-        const summary = document.createElement('summary');
-        summary.textContent = '查看全文';
-        fullText.append(summary, value);
-        row.append(title, fullText);
-      } else {
-        row.append(title, value);
+      const items = group.items.filter(item => {
+        const text = context + ' ' + normalize(item.label) + ' ' + normalize(item.val);
+        return searchTerms.every(terms => terms.some(term => text.includes(term)));
+      });
+      return { ...group, items };
+    }).filter(group => group.items.length) : [];
+    el('quickBrowse').hidden = !query && !browseModule;
+    if (query) {
+      for (const group of matches) fragment.append(renderRecord(group, false));
+      if (!matches.length) fragment.append(makeElement('p', '没有找到相关资料。试试项目简称或字段名。', 'sidebar-empty'));
+    } else if (browseModule) {
+      fragment.append(makeElement('h2', browseModule, 'sidebar-module-title'));
+      const visible = groups.filter(group => directoryName(group) === browseModule);
+      for (const group of visible) fragment.append(renderRecord(group, true));
+      if (!visible.length) fragment.append(makeElement('p', '这个模块没有可用资料。', 'sidebar-empty'));
+    } else {
+      const modules = new Map();
+      for (const group of groups) {
+        const name = directoryName(group);
+        modules.set(name, (modules.get(name) || 0) + (group.entry ? 1 : group.items.length));
       }
-      const controls = document.createElement('div');
-      controls.className = 'sidebar-value-actions';
-      for (const action of group.copyOnly || item.copyOnly ? ['复制'] : ['填入', '复制']) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = action;
-        button.setAttribute('aria-label', action + item.label);
-        if (action === '填入') {
-          button.dataset.write = '';
-          button.disabled = !target || taskRunning;
-          button.onclick = () => writeValue(item, button);
-        } else {
-          button.onclick = async () => {
-            try {
-              await navigator.clipboard.writeText(item.val);
-              el('quickNotice').textContent = '已复制' + item.label;
-            } catch {
-              el('quickNotice').textContent = '复制失败，可以选中资料文字手动复制。';
-            }
-          };
-        }
-        controls.append(button);
+      const directory = makeElement('div', '', 'sidebar-directory');
+      for (const [name, count] of modules) {
+        const button = makeButton(name, () => {
+          browseModule = name;
+          drawDirectory();
+          el('quickBrowse').focus({ preventScroll: true });
+        });
+        button.dataset.quickModule = name;
+        button.append(makeElement('span', String(count)));
+        directory.append(button);
       }
-      row.append(controls);
-      section.append(row);
-      }
-      fragment.append(section);
-    }
-    if (!groups.length) {
-      const empty = document.createElement('p');
-      empty.className = 'sidebar-empty';
-      empty.textContent = query ? '没有找到相关资料。试试换个关键词。' : '这里还没有可用资料。请检查所选简历及已启用的模块。';
-      fragment.append(empty);
+      fragment.append(modules.size ? directory : makeElement('p', '当前简历还没有可用资料。', 'sidebar-empty'));
     }
     list.replaceChildren(fragment);
   }
@@ -122,7 +271,11 @@ const Sidebar = (() => {
     return Boolean(a && b && a.id === b.id && a.url === b.url);
   }
 
-  async function previewEntry(group) {
+  async function previewEntry(group, notice) {
+    if (previewSession) return;
+    clearNotices();
+    const session = {};
+    previewSession = session;
     const selected = target;
     const origin = tab;
     const sourceRevision = catalogRevision;
@@ -141,7 +294,18 @@ const Sidebar = (() => {
         return item;
       }));
       const accepted = await new Promise(resolve => {
-        dialog.addEventListener('close', () => resolve(dialog.returnValue === 'write'), { once: true });
+        // A native close event can arrive after the next dialog has opened. Read
+        // the clicked submitter (or Escape) at the moment this session is closed.
+        const events = new AbortController();
+        const finish = (event, write) => {
+          event.preventDefault();
+          events.abort();
+          dialog.close();
+          if (!write) previewSession = null;
+          resolve(write);
+        };
+        dialog.addEventListener('submit', event => finish(event, event.submitter?.value === 'write'), { signal: events.signal });
+        dialog.addEventListener('cancel', event => finish(event, false), { signal: events.signal });
         dialog.showModal();
       });
       if (!accepted) return;
@@ -150,15 +314,19 @@ const Sidebar = (() => {
       }
       const outcome = await sendTabMessage(origin.id, { ...message, action: 'sidePanelApplyEntry', token: preview.token }, 30000);
       if (outcome?.error) throw new Error(outcome.error);
-      el('quickNotice').textContent = `已填入 ${outcome.filled} 项，${outcome.pending} 项待核对。`;
+      notice.textContent = `已填入 ${outcome.filled} 项，${outcome.pending} 项待核对。`;
     } catch (error) {
-      el('quickNotice').textContent = friendlyTabError(error);
+      notice.textContent = friendlyTabError(error);
+    } finally {
+      if (previewSession === session) previewSession = null;
     }
   }
 
   async function writeValue(item, button) {
     const selected = target;
     const sourceTab = tab;
+    const notice = actionNotice(button);
+    clearNotices();
     button.disabled = true;
     try {
       const active = await getActiveTab();
@@ -166,14 +334,15 @@ const Sidebar = (() => {
       const result = await sendTabMessage(active.id, {
         action: 'sidePanelFillField', url: active.url, targetId: selected.id, value: item.val
       }, 8000);
-      el('quickNotice').textContent = result?.filled ? `已将「${item.label}」填入「${result.label}」。`
+      if (!samePage(sourceTab, tab) || selected.id !== target?.id) return;
+      notice.textContent = result?.filled ? `已将「${item.label}」填入「${result.label}」。`
         : result?.reason === 'task-running' ? '请等当前填入任务结束，再补填这个字段。'
         : result?.reason === 'needs-full-date' ? '这个字段需要完整日期。请在「我的简历」补上具体日后重试。'
         : result?.reason === 'value_reset' ? '网页清空或更改了刚选的值，请手动核对。'
         : result?.reason === 'validation_failed' ? '网页未接受这个值，请检查格式或字数限制。'
         : '这个字段未能填入。请重新选择字段，或复制后手动填写。';
     } catch (error) {
-      el('quickNotice').textContent = friendlyTabError(error);
+      notice.textContent = friendlyTabError(error);
     } finally {
       button.disabled = !target || taskRunning;
     }
@@ -217,7 +386,7 @@ const Sidebar = (() => {
     taskRunning = message.running;
     el('sidebarTaskControls').hidden = !taskRunning;
     el('sidebarPause').textContent = message.paused ? '继续填入' : '暂停';
-    for (const button of el('quickResults').querySelectorAll('[data-write]')) button.disabled = !target || taskRunning;
+    for (const button of document.querySelectorAll('.sidebar-quick-results [data-write]')) button.disabled = !target || taskRunning;
   }
 
   function resetConnection() {
@@ -226,7 +395,7 @@ const Sidebar = (() => {
     oldPort?.disconnect();
     showTarget(null);
     setTaskState({ running: false });
-    el('quickNotice').textContent = '';
+    clearNotices();
   }
 
   function refresh({ changedPage = false } = {}) {
@@ -302,15 +471,18 @@ const Sidebar = (() => {
   }
 
   function bind() {
-    el('quickSearch').addEventListener('input', drawCatalog);
-    el('quickAll').addEventListener('change', drawCatalog);
-    el('quickCategories').addEventListener('click', event => {
-      const button = event.target.closest('[data-quick]');
-      if (!button) return;
-      selectCategory(button.dataset.quick);
+    for (const button of document.querySelectorAll('[data-sidebar-view]')) {
+      button.onclick = () => sidebarView(button.dataset.sidebarView);
+    }
+    el('quickSearch').addEventListener('input', drawDirectory);
+    el('quickAll').addEventListener('change', drawDirectory);
+    el('quickBrowse').onclick = () => {
+      browseModule = '';
+      openRecord = '';
       el('quickSearch').value = '';
-      drawCatalog();
-    });
+      drawDirectory();
+      el('quickResults').querySelector('button')?.focus({ preventScroll: true });
+    };
     el('sidebarPause').onclick = () => controlTask('pauseFill');
     el('sidebarCancel').onclick = () => controlTask('cancelFill');
     el('captureResultBtn').onclick = event => captureCurrentJob(event, lastResult);
@@ -348,6 +520,13 @@ const Sidebar = (() => {
 
   return { bind, refresh, clearResult, showDetails, rememberResult, profileChanged() {
     catalogRevision++;
+    if (catalogProfileId !== currentProfile?.id) {
+      catalogProfileId = currentProfile?.id;
+      browseModule = '';
+      openRecord = '';
+      el('quickSearch').value = '';
+      clearNotices();
+    }
     const profile = profileForFilling(currentProfile);
     catalog = quickReferenceCatalog(profile);
     fullCatalog = quickReferenceCatalog(currentProfile);

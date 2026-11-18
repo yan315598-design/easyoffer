@@ -280,7 +280,16 @@
   }
   function focusState(state) {
     const module = moduleFor(state.input);
-    if (module && typeof navigateWorkspace === 'function') navigateWorkspace(module, true);
+    if (module && typeof navigateWorkspace === 'function' && !navigateWorkspace(module, true)) return;
+    const card = state.input.closest('.item-card');
+    if (card && typeof ENTRY_MODULES !== 'undefined' && ENTRY_MODULES[module]) {
+      const field = state.input;
+      const form = openResumeEntry(module, card.dataset.entryId);
+      const next = form && [...form.querySelectorAll('input')].find(input =>
+        field.dataset.extKey ? input.dataset.extKey === field.dataset.extKey : input.className === field.className);
+      if (!next || !controls.has(next)) return;
+      state = controls.get(next);
+    }
     for (let el = state.input.parentElement; el; el = el.parentElement) {
       if (el.tagName === 'DETAILS') el.open = true;
       if (el.classList.contains('item-card-body') && el.hidden) el.parentElement.querySelector('.item-collapse-btn')?.click();
@@ -294,6 +303,7 @@
     const entries=[];
     for(const [input,state] of controls) {
       if(!input.isConnected) {controls.delete(input);continue;}
+      if (input.closest('.entry-draft')) continue;
       const key = moduleFor(input);
       if (typeof resumeModuleEnabled === 'function' && !resumeModuleEnabled(currentProfile, key)) continue;
       const parsed=parse(input.value);
@@ -320,10 +330,11 @@
     for(const input of document.querySelectorAll(candidates)) if(isDate(input)) enhance(input);
     refreshPending();
   }
-  api.validate = function() {
+  api.validate = function(root = document) {
     api.error = '';
     for (const state of controls.values()) if (state.note.textContent === '结束时间不能早于开始时间') state.sync();
-    for(const card of document.querySelectorAll('.item-card')) {
+    for(const card of root.querySelectorAll('.item-card')) {
+      if (root === document && card.closest('.entry-draft')) continue;
       const inputs=[...card.querySelectorAll('input')];
       const start=inputs.find(i=>i.dataset.extKey==='startDate'||/(?:^|\s)(edu|work|proj)-start(?:\s|$)/.test(i.className));
       const end=inputs.find(i=>i.dataset.extKey==='endDate'||/(?:^|\s)(edu|work|proj)-end(?:\s|$)/.test(i.className));

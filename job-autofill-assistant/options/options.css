@@ -4577,3 +4577,33 @@ textarea {
   #view-profile .item-card-body { padding-top: 12px; }
   #view-profile .item-card .ext-collapse-meta { white-space: normal; text-align: right; }
 }
+
+/* An entry draft is independent of the live form behind the resume overview. */
+#profileOverview .experience-preview[data-editing] > :not(.entry-draft),
+body.editing-resume-entry :is(#sidebarSaveBtn, #saveBtn, #saveBtn2, #finishModuleEditBtn) { display: none; }
+#profileOverview .experience-preview[data-editing] { padding: 0; }
+.entry-draft .item-card { scroll-margin-top: 84px; overflow: visible; }
+.entry-draft .item-card-header { flex-wrap: wrap; gap: 8px; }
+.entry-draft .item-card-header h4 { flex: 1 1 220px; }
+.entry-draft .item-card-header .experience-order { margin: 0; }
+.entry-draft .experience-order[hidden] { display: none; }
+.entry-draft-actions {
+  position: sticky;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px;
+  background: var(--shell-paper);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+}
+.entry-draft-actions button { padding: 8px 16px; border-radius: 7px; font: inherit; cursor: pointer; }
+.entry-draft-actions [data-cancel-entry] { background: transparent; color: var(--text-secondary); border: 1px solid var(--glass-border); }
+.entry-draft-actions [data-save-entry] { background: var(--primary-gradient); border: 1px solid transparent; color: white; }
+.entry-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 6px; white-space: pre-line; }
+.entry-details > summary { width: fit-content; margin-top: 6px; cursor: pointer; color: var(--desk-accent); }
+.experience-preview:has(> .entry-details[open]) > .entry-excerpt { display: none; }
+.experience-order [data-delete-entry] { color: var(--text-secondary); }

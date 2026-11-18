@@ -1,6 +1,6 @@
 /* Local extension workspace. Existing résumé nodes keep their listeners and IDs. */
 (() => {
-  const pages = { product: '产品功能', profile: '我的简历', tracker: '求职工作台', help: '帮助中心', settings: '设置' };
+  const pages = { product: '首页', profile: '我的简历', tracker: '求职工作台', help: '帮助中心', settings: '设置' };
   const articles = [
     ['install', '安装与更新', '装好后，把易offer固定在工具栏。在网申页面点图标，就能打开浏览器侧栏。', [
       '打开 Chrome 或 Edge 的扩展管理页，启用「开发者模式」，选择「加载已解压的扩展程序」。选中包含 manifest.json 的 job-autofill-assistant 文件夹。',
@@ -23,11 +23,11 @@
       '只填某一段教育或实习经历时点「选区填入」。在网页上拖框，选择对应简历条目，再点「立即填入」。按 Esc 可以退出选区。'
     ], '遇到一个难填的字段，可以转到「资料速查」逐项补。招聘网站的保存和提交按钮由你点击。'],
     ['quick', '资料速查与点选补填', '适合补一个字段，比如毕业院校，也可以把一整段项目职责复制到长文本框。', [
-      '在网页上点一下要填的输入框，或用 Tab 移到那个字段。看到侧栏显示「填入目标」后，先核对字段名。',
-      '在「资料速查」输入关键词。搜索会跨分类查找，比如搜「导师」「生源地」或项目名称。长文本可以先点「查看全文」。',
-      '点击资料旁边的「填入」，再看网页有没有收到内容。只想把资料放进剪贴板时，点击「复制」。',
+      '在网页上点要填的输入框，或用 Tab 移到该字段。例如点「项目职责」，侧栏会列出简历中各项目的职责。核对项目名称后点「填入」。',
+      '上方按网页字段推荐，下方可随时浏览或搜索。在下方同时输入项目名和字段，例如「天眼 职责」。只想把结果放进剪贴板时，点「复制」。',
+      '连续取用一段经历时，手动打开对应模块，再展开这条记录。保持它展开，就能依次复制职责、描述和成果。',
       '想补同一条经历里的多个字段时，先在网页选中那一行，再点侧栏的「预览整条」。核对目标行和待填内容后确认。已有值会保留。',
-      '找不到停用模块里的内容时，勾选「显示停用模块资料」，可以搜索和复制。'
+      '找不到停用模块里的内容时，勾选「包含停用资料（仅复制）」，再搜索需要的字段。'
     ], '切换过岗位或表单步骤后，请重新点选字段。给其他扩展的资料页填写时，在易offer侧栏搜索并复制，再到目标输入框按 Ctrl+V 或 ⌘V。'],
     ['date', '日期选择与补全', '点日期框打开月历。只记得年月时，可以先选到对应月份，再点「仅保存年月」。', [
       '点月历标题中的年份或月份可以快速跳转。用方向键在日历中移动，按 Enter 选中，按 Esc 关闭。',
@@ -40,7 +40,8 @@
       '填写后点击表单里的其他字段，再检查选项是否仍显示。如果选项消失或出现必填提示，手动选择后再检查一次。'
     ], '如果网页没有你需要的选项，先查看招聘网站的填报说明。资料速查可以帮你找到原值，方便核对。'],
     ['entries', '多条经历与模块管理', '一个网站可能把实习和工作放在两个区，也可能把它们放在同一个列表。先检查网页结构，再选择填写方式。', [
-      '在「我的简历」分别检查「实习经历」和「工作经历」。用上下移动按钮调整顺序，确保最想先展示的经历排在前面。',
+      '在「我的简历」点目标经历上的「编辑」。教育、实习、工作和项目都可单独修改，点「保存本条」后才会写入，点「取消」可以放弃这次修改。',
+      '用「上移」「下移」调整展示顺序。页面会跟随移动的那条经历，便于连续调整。',
       '如果网页只显示一条经历，而且新增按钮不可用，先补齐当前条目的必填信息，再按网站要求保存这条经历。',
       '如果只想填其中一条，用「选区填入」框选这条经历的输入框，再选同一条简历资料。'
     ], '侧栏找不到某项资料时，先确认当前简历和「模块管理」的勾选状态。重新启用模块后，原有内容会重新显示。'],
@@ -66,7 +67,7 @@
     '填写与排查': ['fill', 'quick', 'date', 'controls', 'entries', 'pause'],
     '记录与数据': ['tracker', 'backup']
   };
-  let current = 'profile', lastHash = location.hash || '#profile-overview', navigating = false;
+  let current = 'product', lastHash = location.hash || '#product', navigating = false;
   function node(tag, cls, text) { const e = document.createElement(tag); e.className = cls || ''; if (text) e.textContent = text; return e; }
   function link(text, target) { const a = node('a','shell-link',text); a.href = '#' + target; return a; }
   function init() {
@@ -97,6 +98,10 @@
         const tip = node('aside', 'help-tip');
         tip.append(node('h3', '', '遇到问题时'), node('p', '', troubleshooting));
         article.append(node('h2', '', title), node('p', 'help-intro', lead), stepsList, tip);
+        if (id === 'fill') {
+          article.append(document.getElementById('fill-guide-template').content);
+          article.dataset.search += ' ' + article.querySelector('.product-demo').textContent.toLowerCase();
+        }
         content.append(article);
       }
       toc.append(group);
@@ -230,6 +235,7 @@
     render(location.hash);
   }
   function render(hash) {
+    hash = hash || '#product';
     const previous = current;
     current = /^#(product|tracker|help|settings)(?:-|$)/.exec(hash)?.[1] || (hash==='#section-ai'||hash==='#view-ai'?'settings':'profile');
     document.body.dataset.appPage=current;
@@ -238,9 +244,10 @@
     document.querySelectorAll('[data-page]').forEach(a=>{a.classList.toggle('active',a.dataset.page===current); if(a.dataset.page===current)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     if(current==='settings'){const ai=document.getElementById('section-ai');document.getElementById('page-settings').append(ai);ai.classList.remove('is-module-hidden');ai.style.display='block';}
     if(current==='profile' && typeof showWorkspaceModule==='function'){const m=hash.match(/^#(section|view)-(.+)$/);showWorkspaceModule(m?.[2],m?.[1]==='section');}
-    if (current === 'tracker' && previous !== 'tracker') {
+    if (current === 'product') window.EasyOfferHome.refresh();
+    if (current === 'tracker' && (previous !== 'tracker' || hash !== lastHash)) {
       const tracker = document.getElementById('page-tracker');
-      window.YanyuTracker.mount(tracker).catch(error => {
+      window.YanyuTracker.mount(tracker, hash).catch(error => {
         tracker.replaceChildren(node('p', 'shell-card', '工作台加载失败，请重新进入。' + error.message));
       });
     }
@@ -268,7 +275,7 @@
       backup.focus({ preventScroll: true });
       backup.scrollIntoView({ block: 'start' });
     }
-    lastHash=hash || '#profile-overview';
+    lastHash=hash;
   }
   async function navigate(hash, external = false) {
     if (navigating) return;
@@ -280,12 +287,18 @@
         showToast('正在加载本地资料，请稍候再切换', 'info');
         return;
       }
-      if (!await flushProfileSave()) {
+      if (!leaveResumeEntry() || !await flushProfileSave()) {
         if (external) history.replaceState(null, '', previousHash || location.pathname);
         return;
       }
-      if (!external && location.hash !== hash) history.pushState(null, '', hash);
+      if (!external && (location.hash || '#product') !== hash) {
+        if (current === 'product') history.replaceState({ ...history.state, homeScrollY: window.scrollY }, '');
+        history.pushState(null, '', hash);
+      }
       render(hash);
+      if (external && (!hash || hash === '#product') && Number.isFinite(history.state?.homeScrollY)) {
+        window.scrollTo({ top: history.state.homeScrollY, behavior: 'instant' });
+      }
     } catch (error) {
       if (external) history.replaceState(null, '', previousHash || location.pathname);
       showToast('页面切换失败：' + error.message, 'error');

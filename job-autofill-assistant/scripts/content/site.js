@@ -677,6 +677,7 @@ async function fillYearMonthWidgets(profile, options) {
 var  activeDeclarationQuestions = new Set();
 function isProtectedQuestion(label) {
   if (activeDeclarationQuestions.has(exactQuestion(label))) return true;
+  if (/personal[-_\s]?promise/i.test(label)) return true;
   return /亲属.*(任职|退休|工作)|亲友.*在公司就职|境外.*(身份|居留|就业|定居)|外国公民|香港.*台湾|国（境）外|国籍.*(其他|外国)|违法|违纪|犯罪|处分|失信|利益冲突|声明|承诺|签名|签字|本人确认|本人同意|真实性/.test(label);
 }
 
@@ -730,7 +731,7 @@ async function fillConfirmedDeclarations(profile, options) {
     if (seen.has(root)) continue;
     seen.add(root);
     const question = getClosestLabelText(input);
-    if (!question || /承诺|签名|签字|本人确认|本人同意|真实性/.test(question) || questionAnswered(root)) continue;
+    if (!question || /承诺|签名|签字|本人确认|本人同意|真实性|personal[-_\s]?promise/i.test(question) || questionAnswered(root)) continue;
     const saved = (profile.declarations || []).find((item) => {
       if (exactQuestion(item.question) !== exactQuestion(question)) return false;
       if (!['是', '否'].includes(item.answer)) return false;

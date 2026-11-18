@@ -414,6 +414,20 @@ function elementDateParts(value) {
   return [year, parts[2] ? month : 0, parts[3] ? day : 0];
 }
 
+// Calendar controls can display a temporary edit until blur commits or rolls it back.
+function dateControlPrecision(input) {
+  if (input.type === 'date') return 3;
+  if (input.type === 'month') return 2;
+  const editor = input.closest('.el-date-editor');
+  if (!editor || editor.matches('.el-range-editor')) return 0;
+  return editor.matches('.el-date-editor--year') ? 1 : editor.matches('.el-date-editor--month') ? 2 : 3;
+}
+
+function dateValueMatches(input, expected, precision) {
+  const shown = elementDateParts(input.value);
+  return !!expected?.[precision - 1] && expected.slice(0, precision).every((part, index) => shown?.[index] === part);
+}
+
 async function clickFillControl(node, opts) {
   if (!node) return false;
   await waitForFillCheckpoint(opts.task);
@@ -424,19 +438,15 @@ async function clickFillControl(node, opts) {
 
 async function fillElementDate(el, value, opts = {}) {
   const editor = el.closest('.el-date-editor');
-  const precision = editor.matches('.el-date-editor--year') ? 1 : editor.matches('.el-date-editor--month') ? 2 : 3;
+  const precision = dateControlPrecision(el);
   const parts = elementDateParts(value);
-  if (editor.matches('.el-range-editor')) return false;
+  if (!precision) return false;
   if (!parts?.[precision - 1]) {
     markManual(el, `${value}（请确认完整日期）`);
     return false;
   }
   const [year, month, day] = parts;
-  const matchesDate = () => {
-    const current = elementDateParts(el.value);
-    return parts.slice(0, precision).every((part, index) => current?.[index] === part);
-  };
-  if (matchesDate()) return true;
+  const matchesDate = () => dateValueMatches(el, parts, precision);
 
   const ownerId = el.getAttribute('aria-controls') || editor.getAttribute('aria-controls');
   const visiblePanel = () => {
@@ -445,6 +455,7 @@ async function fillElementDate(el, value, opts = {}) {
     const panel = root?.matches('.el-picker-panel') ? root : root?.querySelector('.el-picker-panel');
     return isElementTrulyVisible(panel) && panel;
   };
+  if (matchesDate() && !visiblePanel()) return true;
   let panel;
   const wait = (test, timeoutMs = 400) =>
     waitFor(test, { timeoutMs, signal: opts.signal, task: opts.task, observe: panel || document.body });
@@ -668,7 +679,7 @@ async function fillField(el, value, options) {
   if (!written) return false;
   if (target === document.activeElement) target.blur();
   if (!verifyFieldWrite(target, value, options?.forceWidget)) return false;
-  if (!isWidgetSelectTrigger(target) && !options?.forceWidget) return true;
+  if (!dateControlPrecision(target) && !isWidgetSelectTrigger(target) && !options?.forceWidget) return true;
   if (options?.deferVerification) {
     options.deferVerification(target, Date.now() + 120);
     return true;
@@ -684,7 +695,13 @@ function verifyFieldWrite(target, value, forceWidget = false) {
     target.setAttribute('data-easyoffer-write-reason', 'value_reset');
     return false;
   }
-  if (isWidgetSelectTrigger(target) || forceWidget) {
+  const precision = dateControlPrecision(target);
+  if (precision) {
+    if (!dateValueMatches(target, elementDateParts(value), precision)) {
+      target.setAttribute('data-easyoffer-write-reason', 'value_reset');
+      return false;
+    }
+  } else if (isWidgetSelectTrigger(target) || forceWidget) {
     const selected = widgetSelectCurrentValue(target) || (target.closest('.el-cascader') ? target.value : '');
     if (!String(selected || '').trim()) {
       target.setAttribute('data-easyoffer-write-reason', 'value_reset');

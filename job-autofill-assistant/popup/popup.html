@@ -10,19 +10,20 @@
   <link rel="stylesheet" href="popup.css">
   <link rel="stylesheet" href="../styles/brand.css">
   <link rel="stylesheet" href="sidebar.css">
+  <link rel="stylesheet" href="../styles/workspace-theme.css">
 </head>
 <body>
-  <div class="container">
+  <div class="container" data-view="quick">
 
     <!-- 顶部品牌 Header -->
     <header class="app-header">
-      <div class="brand">
+      <a class="brand" href="../options/options.html" data-workspace-link title="打开易offer工作区" aria-label="打开易offer工作区">
         <img src="../icons/icon48.png" alt="" class="brand-logo">
         <div class="brand-text">
           <span class="brand-name"><span class="brand-en">易offer</span>网申填写助手</span>
           <span class="brand-sub">网申侧栏</span>
         </div>
-      </div>
+      </a>
       <div class="header-actions">
         <button type="button" id="themeToggle" class="icon-btn" title="切换深浅主题" aria-label="切换深浅主题">
           <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -43,6 +44,10 @@
       </div>
     </header>
 
+    <nav class="sidebar-views" aria-label="侧栏视图">
+      <button type="button" data-sidebar-view="fill" aria-pressed="false">自动填写</button>
+      <button type="button" data-sidebar-view="quick" aria-pressed="true">资料速查</button>
+    </nav>
     <div class="sidebar-command">
       <button type="button" id="captureJobBtn" class="btn btn-secondary">＋ 记录此岗位</button>
       <a href="../options/options.html#tracker" data-workspace-link class="footer-link">求职工作台 ↗</a>
@@ -73,6 +78,7 @@
           <select id="profileSelect" style="display: none;"></select>
         </div>
 
+        <a id="settingsBtn" class="footer-link profile-edit-link" href="../options/options.html#profile-overview" data-workspace-link>编辑简历</a>
         <button id="renameProfileBtn" class="icon-btn" title="重命名当前资料" aria-label="重命名当前资料">
           <svg viewBox="0 0 24 24" width="13.5" height="13.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -154,13 +160,6 @@
       <label class="sidebar-add-rows"><input id="incrementalAddRows" type="checkbox"> 增量填入时也补建条目</label>
       </fieldset>
 
-      <button id="settingsBtn" class="btn btn-secondary btn-block" title="打开我的简历">
-        <svg class="btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-        <span class="btn-text">配置资料与简历</span>
-      </button>
     </section>
 
     <div id="taskFeedback" class="task-feedback" role="status" hidden>
@@ -181,30 +180,29 @@
       <button type="button" id="captureResultBtn" class="btn btn-secondary">记录此岗位</button>
     </section>
 
-    <section class="card sidebar-quick" aria-labelledby="quickHeading">
-      <div class="sidebar-quick-head">
-        <div><span class="sidebar-kicker">手动补填</span><h1 id="quickHeading">资料速查</h1></div>
-        <a href="../options/options.html#help-quick" data-workspace-link class="footer-link">使用说明 ↗</a>
-      </div>
+    <section class="card sidebar-quick" aria-labelledby="quickFollow">
+      <h2 id="quickFollow" class="sidebar-block-title">按当前字段查找</h2>
       <div id="quickTarget" class="sidebar-target" aria-live="polite">
         <strong>先选一个网页字段</strong><span>点击网页输入框，或用 Tab 移到该字段。</span>
       </div>
-      <label class="sidebar-search">
-        <span class="sidebar-kicker">查找当前简历资料</span>
-        <input id="quickSearch" type="search" placeholder="搜索字段或内容，例如「毕业院校」">
-      </label>
-      <div id="quickCategories" class="sidebar-categories" aria-label="资料分类">
-        <button type="button" data-quick="basic" aria-pressed="true">基础与家属</button>
-        <button type="button" data-quick="edu" aria-pressed="false">教育与科研</button>
-        <button type="button" data-quick="exp" aria-pressed="false">经历与实战</button>
-        <button type="button" data-quick="qa" aria-pressed="false">问答与自述</button>
-      </div>
-      <div class="sidebar-quick-tools">
-        <label><input id="quickAll" type="checkbox"> 显示停用模块资料</label>
-        <span>停用资料可复制</span>
-      </div>
+      <div id="quickCandidates" class="sidebar-quick-results sidebar-candidates"></div>
       <p id="quickNotice" class="sidebar-notice" role="status"></p>
+    </section>
+    <section class="card sidebar-quick" aria-labelledby="quickHeading">
+      <div class="sidebar-quick-nav">
+        <h2 id="quickHeading" class="sidebar-block-title">浏览其他资料</h2>
+        <button id="quickBrowse" type="button" hidden>返回目录</button>
+      </div>
+      <label class="sidebar-search">
+        <span class="visually-hidden">搜索当前简历资料</span>
+        <input id="quickSearch" type="search" placeholder="搜项目、字段或内容，如「风控 职责」">
+      </label>
+      <p id="quickBrowseNotice" class="sidebar-notice" role="status"></p>
       <div id="quickResults" class="sidebar-quick-results"></div>
+      <div class="sidebar-quick-tools">
+        <label><input id="quickAll" type="checkbox"> 包含停用资料（仅复制）</label>
+        <a href="../options/options.html#help-quick" data-workspace-link class="footer-link">使用说明 ↗</a>
+      </div>
     </section>
     <dialog id="quickEntryPreview" class="sidebar-preview" aria-labelledby="quickEntryHeading">
       <h2 id="quickEntryHeading">预览整条填入</h2>

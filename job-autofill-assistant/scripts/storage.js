@@ -79,8 +79,7 @@ class StorageManager {
         yearsOfWork: '',               // 工作年限
         lastNamePinyin: '',            // 姓拼音
         firstNamePinyin: '',           // 名拼音
-        namePinyinFull: '',            // 姓名全拼
-        personalPromise: ''            // 个人声明/承诺 (是)
+        namePinyinFull: ''             // 姓名全拼
       },
 
       // 求职意向与偏好
@@ -368,9 +367,23 @@ class StorageManager {
     for (const key of [...LEGACY_LANGUAGE_SCORES, 'otherLanguages']) delete profile.languageSkills[key];
     for (const section of profileListKeys) {
       profile[section] = (Array.isArray(profile[section]) ? profile[section] : []).map(item => ({
-        ...template[section]?.[0], ...extendedDefaults(section), id: this.generateId(),
+        ...template[section]?.[0], ...extendedDefaults(section), id: ['education', 'workExperience', 'projects'].includes(section) ? '' : this.generateId(),
         ...(typeof item === 'string' ? { name: item, code: '', issuer: '', date: '', expiryDate: '' } : item)
       }));
+    }
+    for (const section of ['education', 'workExperience', 'projects']) {
+      const seen = new Set();
+      const reserved = new Set(profile[section].map(item => String(item.id ?? '')).filter(Boolean));
+      profile[section].forEach((item, index) => {
+        item.id = String(item.id ?? '');
+        if (!item.id || seen.has(item.id)) {
+          let id = `legacy-${section}-${index + 1}`;
+          while (reserved.has(id)) id += '-';
+          item.id = id;
+          reserved.add(id);
+        }
+        seen.add(item.id);
+      });
     }
     const legacySkills = profile.skills;
     profile.skills = profileSkillEntries(profile);
@@ -455,6 +468,43 @@ class StorageManager {
       console.error('[存储] 添加资料失败:', error);
       throw error;
     }
+  }
+
+  async editResumeEntry({ profileId, section, operation, entryId, fields, previous, direction, neighborId }) {
+    if (!['education', 'workExperience', 'projects'].includes(section) || !entryId) throw new Error('经历不存在');
+    const data = await this.loadAll();
+    const profile = data?.profiles.find(item => item.id === profileId);
+    if (!profile) throw new Error('简历已移除');
+    const entries = profile[section];
+    const index = entries.findIndex(item => item.id === entryId);
+    if (operation === 'add') {
+      // The entry ID also makes a retry after a lost reply idempotent.
+      if (index < 0) entries.push({ ...fields, id: entryId });
+    } else if (index < 0) {
+      if (operation === 'delete') return entries;
+      throw new Error('这条经历已移除，请重新打开简历');
+    } else if (operation === 'edit') {
+      const entry = entries[index];
+      if (Object.keys(fields).some(key => (entry[key] ?? '') !== previous[key] && entry[key] !== fields[key])) {
+        throw new Error('此字段已在其他页面修改，请保留需要的内容并重新打开简历');
+      }
+      entries[index] = { ...entry, ...fields, id: entryId };
+    } else if (operation === 'delete') {
+      entries.splice(index, 1);
+    } else if (operation === 'move' && ['up', 'down'].includes(direction)) {
+      const target = entries.findIndex(item => item.id === neighborId);
+      if (target < 0) throw new Error('相邻经历已移除，请重新打开简历');
+      if ((direction === 'up' && target < index) || (direction === 'down' && target > index)) {
+        const [moved] = entries.splice(index, 1);
+        const neighbor = entries.findIndex(item => item.id === neighborId);
+        entries.splice(direction === 'up' ? neighbor : neighbor + 1, 0, moved);
+      }
+    } else {
+      throw new Error('无效的经历操作');
+    }
+    profile.updatedAt = new Date().toISOString();
+    await this.saveAll(data);
+    return entries;
   }
 
   // 更新资料

@@ -1,0 +1,136 @@
+/* Shared visual treatment for the extension workspace and native side panel. */
+:root {
+  --portal-band: linear-gradient(106deg, #132554 0%, #263b86 54%, #4546a4 100%);
+  --portal-line: #548695;
+  --portal-selected: #263d88;
+  --portal-wash: #edf3fa;
+  --portal-sky: #d2e4f4;
+  --portal-mist: #e5e0f6;
+  --portal-paper: #fafcff;
+  --portal-ink: #192e55;
+  --portal-detail: #536481;
+  --portal-rule: #cbd8e7;
+  --portal-ring: rgb(84 117 174 / 19%);
+  --portal-serif: "STZhongsong", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+}
+:root[data-theme="dark"] {
+  --portal-band: linear-gradient(106deg, #14213c, #243364 65%, #353965);
+  --portal-line: #77adaf;
+  --portal-selected: #30477f;
+  --portal-wash: #111c2d;
+  --portal-sky: #1b3547;
+  --portal-mist: #2a2949;
+  --portal-paper: #1d293b;
+  --portal-ink: #e9f1fc;
+  --portal-detail: #bcc9dd;
+  --portal-rule: #3c4d67;
+  --portal-ring: rgb(150 187 219 / 15%);
+}
+
+body {
+  background-color: var(--portal-wash);
+  background-image: radial-gradient(ellipse at 0 0, var(--portal-sky), transparent 46%),
+    radial-gradient(ellipse at 100% 14%, var(--portal-mist), transparent 44%);
+  background-attachment: fixed;
+  font-family: var(--yy-font-ui);
+}
+.navbar, .app-header {
+  color: #fff;
+  background: radial-gradient(ellipse 23rem 15rem at 95% -4rem, transparent 54%, #ffffff13 54.5%, transparent 55.4%, transparent 68%, #ffffff15 68.5%, transparent 69.2%),
+    var(--portal-band);
+}
+.navbar { border-bottom: 2px solid #8eaace; }
+.navbar .nav-brand :is(.nav-title, .nav-title-en), .app-header :is(.brand-name, .brand-name .brand-en) {
+  color: #fff;
+  -webkit-text-fill-color: currentColor;
+}
+.navbar .nav-title, .app-header .brand-name { font-size: 16px; font-weight: 600; }
+.navbar .nav-tabs-pill { background: transparent; }
+.navbar .nav-tabs-pill :is(.nav-tab-btn, .shell-link) { color: #e4e9fb; font-size: 15px; }
+.navbar .nav-tabs-pill :is(.nav-tab-btn, .shell-link):hover { color: #fff; background: #ffffff18; }
+.navbar .nav-tabs-pill :is(.nav-tab-btn, .shell-link).active {
+  color: #fff; background: #ffffff1e; box-shadow: inset 0 -3px #a5e2e3; border-radius: 6px 6px 2px 2px;
+}
+.navbar #themeToggle, .app-header #themeToggle { color: #fff; border-color: #ffffff55; background: #ffffff14; }
+.navbar :focus-visible, .app-header :focus-visible { outline: 2px solid #a5e2e3; outline-offset: -2px; }
+
+/* A tinted chapter header and short accent rule distinguish the module directory. */
+#view-profile .drawer-content {
+  background: var(--portal-paper);
+  border-color: var(--portal-rule);
+  box-shadow: 0 8px 24px rgb(23 48 92 / 8%);
+}
+#view-profile .sidebar-header { border-bottom-color: var(--portal-rule); }
+#view-profile .sidebar-title {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 16px; font-weight: 600; letter-spacing: .05em; color: var(--portal-ink);
+}
+#view-profile .sidebar-title::before {
+  content: ""; width: 4px; height: 16px; border-radius: 2px;
+  background: linear-gradient(var(--portal-selected) 60%, #67acb2 60%);
+}
+#view-profile .sidebar-link { font-size: 14px; color: var(--portal-detail); }
+#view-profile .sidebar-link .nav-text { font-size: inherit; }
+#view-profile .sidebar-link.active {
+  color: #fff; background: var(--portal-selected);
+  box-shadow: inset 3px 0 #84c6ce;
+}
+#view-profile .sidebar-link.active :is(.nav-text, svg) { color: inherit; }
+#view-profile .sidebar-link.active .module-count { color: #fff; background: #ffffff1c; border-color: #ffffff54; }
+#view-profile .module-count { font-size: 12px; }
+#view-profile .overview-workbench {
+  border-color: var(--portal-rule);
+  border-top: 3px solid var(--portal-line);
+  background:
+    radial-gradient(ellipse 45rem 27rem at 102% 123%, transparent 62%, var(--portal-ring) 62.25%, transparent 62.6%, transparent 66%, var(--portal-ring) 66.25%, transparent 66.6%),
+    linear-gradient(105deg, var(--portal-paper) 29%, var(--portal-sky) 81%, var(--portal-mist));
+  padding: clamp(16px, 2vw, 30px);
+}
+#view-profile .overview-name, .shell-page > h1, .tracker-title h1 {
+  font-family: var(--portal-serif); font-size: clamp(25px, 2.5vw, 36px);
+  color: var(--portal-ink); font-weight: 600; line-height: 1.3;
+}
+#view-profile .overview-tagline { color: var(--portal-detail); font-size: 15px; line-height: 1.65; }
+#view-profile .ov-wb-status { background: var(--portal-paper); border: 1px solid var(--portal-rule); border-radius: 10px; padding: 12px; }
+#view-profile .ov-wb-percent { font-size: 25px; color: var(--portal-ink); }
+#view-profile :is(.ov-wb-meta, .ov-wb-caption, .ov-row dt, .rail-card-label) { font-size: 13px; color: var(--portal-detail); }
+#view-profile .overview-card-title { color: var(--portal-ink); font-size: 19px; }
+#view-profile .experience-preview-header h4, #view-profile .entry-draft .item-card-header h4 {
+  color: var(--portal-ink); font-size: 17px; line-height: 1.55; overflow-wrap: anywhere;
+}
+#view-profile :is(.entry-excerpt, .experience-copy p, .ov-field-list dd, .form-group textarea) {
+  font-size: 15px; line-height: 1.75;
+}
+#view-profile .form-group :is(input:not([type="checkbox"], [type="radio"]), select) { font-size: 15px; }
+#view-profile .form-group label { font-size: 14px; color: var(--portal-detail); }
+
+/* The native sidebar keeps the search field near the top at narrow widths. */
+.container:has(.sidebar-views) { background: transparent; }
+body:has(.sidebar-views) { min-height: 100dvh; }
+.sidebar-command { background: transparent; }
+.app-header {
+  margin-inline: -14px; padding: 13px 15px;
+  border-bottom: 2px solid #8eaace;
+}
+.app-header .brand-sub { color: #d5def4; font-size: 12px; }
+.sidebar-views {
+  background: var(--portal-paper); border: 1px solid var(--portal-rule);
+  border-radius: 9px; padding: 3px;
+}
+.sidebar-views button { border-color: transparent; background: transparent; font-size: 14px; }
+.sidebar-views button[aria-pressed="true"] { color: white; background: var(--portal-selected); border-color: var(--portal-selected); }
+.sidebar-search input { background: var(--portal-paper); border-color: var(--portal-rule); font-size: 15px; }
+.sidebar-target.has-target { border-inline-start-color: var(--portal-line); }
+.sidebar-record > :is(header, summary) { color: var(--portal-ink); background: var(--portal-wash); }
+.sidebar-record h2, .sidebar-record > summary { font-size: 15px; line-height: 1.5; }
+.sidebar-value h3 { font-size: 13px; color: var(--portal-detail); }
+.sidebar-value p { font-size: 15px; line-height: 1.65; }
+.sidebar-value button { min-height: 32px; font-size: 13px; }
+.sidebar-directory button { color: var(--portal-ink); font-size: 14px; }
+@media (max-width: 650px) {
+  .navbar .nav-tabs-pill :is(.nav-tab-btn, .shell-link) { font-size: 14px; }
+  #view-profile .overview-workbench .overview-hero-main { min-width: 0; }
+}
+@media (max-width: 320px) {
+  .app-header { margin-inline: -10px; padding-inline: 11px; }
+}

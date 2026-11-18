@@ -28,9 +28,14 @@ function publishSidePanelTarget() {
   if (!contentMainState.sidePanelPorts?.size) return;
   const selected = getFillTarget();
   const context = sidePanelRow(selected);
+  const field = context?.row.fields.find(item => item.input === selected?.el);
+  const detection = field?.detection || (selected?.el.isConnected && detectField(selected.el));
   const target = selected?.el.isConnected && selected.url === location.href
     ? { id: selected.id, label: selected.label, kind: selected.kindName, section: context?.module.section,
-        key: context?.row.fields.find(field => field.input === selected.el)?.key, row: context?.label }
+        key: field?.key, row: context?.label,
+        fieldType: detection?.confidence >= FIELD_WRITE_MIN_CONFIDENCE ? detection.fieldType : undefined,
+        identity: context ? Object.fromEntries(repeatRowIdentity(context.module, context.row)
+          .map(({ key, actual }) => [key, actual])) : undefined }
     : null;
   publishSidePanel({ kind: 'target', target });
 }
@@ -72,8 +77,8 @@ function previewSidePanelRow(request, target) {
 
 async function applySidePanelRow(request, target) {
   const preview = contentMainState.rowPreview;
-  contentMainState.rowPreview = null;
   if (!preview || preview.token !== request.token || preview.targetId !== target.id) return { error: '预览已失效，请重新选择目标。' };
+  contentMainState.rowPreview = null;
   const { root, module, fields } = preview;
   const task = startActiveFillTask('quick-entry', 'incremental');
   if (!task) return { error: '请等当前填写任务结束。' };

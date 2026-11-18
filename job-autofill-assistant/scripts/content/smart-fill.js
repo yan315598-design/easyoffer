@@ -769,7 +769,7 @@ function buildSmartFillProfileDigest(profile, allowedSections) {
     'englishName', 'wechat', 'qq', 'idCardType', 'bloodType', 'registeredAddressType', 'religion',
     'honor', 'specialSkills', 'openToWork', 'permanentResidencePermit', 'jobSources',
     'foreignCitizenship', 'relativesEmployed', 'yearsOfWork',
-    'lastNamePinyin', 'firstNamePinyin', 'namePinyinFull', 'personalPromise',
+    'lastNamePinyin', 'firstNamePinyin', 'namePinyinFull',
     'homeAddress'
   ]);
   if (basicInfo) digest.basicInfo = basicInfo;

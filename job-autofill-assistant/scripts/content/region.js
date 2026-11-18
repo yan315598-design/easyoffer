@@ -165,7 +165,6 @@ var  REGION_BASIC_INFO_FIELD_PATTERNS = [
   ['jobSources', /招聘信息来源|招聘来源|信息来源|渠道/],
   ['foreignCitizenship', /外国国籍|外国居留权/],
   ['relativesEmployed', /亲属.*任职|亲属回避|回避/],
-  ['personalPromise', /个人声明|个人承诺|承诺/],
   ['location', /现住址|现址|location/]
 ];
 
@@ -762,7 +761,7 @@ async function regionFillApply(refs, skippedHasValue, category, entry, settings,
   if (remaining.length && aiReady) {
     showAiProgress(`选区填入：AI 匹配 ${remaining.length} 个字段…`);
     try {
-      const entryJson = JSON.stringify(entry);
+      const entryJson = JSON.stringify(category === 'basicInfo' ? basicInfoForUse(entry) : entry);
       for (let i = 0; i < remaining.length; i += SMART_FILL_BATCH_SIZE) {
         await waitForFillCheckpoint(task);
         const batch = remaining.slice(i, i + SMART_FILL_BATCH_SIZE);

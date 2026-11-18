@@ -89,6 +89,7 @@ function yanyuGenericRegionFields(category, entry) {
 }
 
 function regionFieldizeEntry(category, entry) {
+  if (category === 'basicInfo') entry = basicInfoForUse(entry);
   const hasLegacyDefs = category === 'basicInfo' || !!REGION_ENTRY_FIELD_DEFS[category];
   if (hasLegacyDefs) {
     const legacyFields = yanyuLegacyRegionFieldize(category, entry);

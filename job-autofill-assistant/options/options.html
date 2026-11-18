@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="product.css">
   <link rel="stylesheet" href="date-controls.css">
   <link rel="stylesheet" href="tracker.css">
+  <link rel="stylesheet" href="../styles/workspace-theme.css">
+  <link rel="stylesheet" href="home.css">
 </head>
 <body>
   <!-- 背景氛围光晕 -->
@@ -64,90 +66,72 @@
   </nav>
 
   <div class="main-container">
-    <section id="page-product" class="shell-page" aria-labelledby="product-title" hidden>
-      <div class="product-hero">
-        <svg class="product-orbit" viewBox="0 0 1440 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          <ellipse cx="720" cy="360" rx="639" ry="229" transform="rotate(-12 720 360)"/>
-          <ellipse cx="720" cy="360" rx="610" ry="267" transform="rotate(12 720 360)"/>
-          <circle cx="211" cy="530" r="4"/><circle cx="1232" cy="216" r="5"/><circle cx="1081" cy="610" r="3"/>
-        </svg>
-        <div class="product-float product-float-resume" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><rect x="7" y="3" width="18" height="25" rx="4"/><circle cx="16" cy="11" r="2.5"/><path d="M12 17h8m-8 5h5"/></svg>
+    <section id="page-product" class="shell-page" aria-labelledby="home-title" hidden>
+      <div class="home-workspace">
+        <div class="home-overview">
+          <section class="home-agenda" aria-labelledby="home-title">
+            <header class="home-agenda-head">
+              <time id="home-date"></time>
+              <h1 id="home-title">接下来要做的事</h1>
+            </header>
+            <div id="home-tasks" class="home-tasks" aria-live="polite"></div>
+            <a class="home-workbench-link" href="#tracker">打开求职工作台 <span aria-hidden="true">→</span></a>
+          </section>
+          <section class="home-progress" aria-labelledby="home-progress-title">
+            <header><h2 id="home-progress-title">投递进度</h2><span id="home-count"></span></header>
+            <p>未归档岗位，按当前阶段统计</p>
+            <div class="home-stages" id="home-stages"></div>
+          </section>
         </div>
-        <div class="product-float product-float-scan" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><path d="M5 12V7a2 2 0 0 1 2-2h5m8 0h5a2 2 0 0 1 2 2v5m0 8v5a2 2 0 0 1-2 2h-5m-8 0H7a2 2 0 0 1-2-2v-5M2 16h28"/><path d="M11 11h10m-8 10h6"/></svg>
-        </div>
-        <div class="product-float product-float-calendar" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><rect x="5" y="7" width="22" height="20" rx="4"/><path d="M5 13h22M11 4v6m10-6v6m-10 9h3m4 0h3m-10 4h3"/></svg>
-        </div>
-        <div class="product-float product-float-bookmark" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><path d="M9 6h14a2 2 0 0 1 2 2v19l-9-6-9 6V8a2 2 0 0 1 2-2Z"/><path d="M16 10v7m-3.5-3.5h7"/></svg>
-        </div>
-        <div class="product-float product-float-check" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><path d="m11 16 3.5 3.5 6.5-7"/></svg>
-        </div>
-        <div class="product-float product-float-grid" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><rect x="5" y="5" width="9" height="9" rx="2"/><rect x="18" y="5" width="9" height="9" rx="2"/><rect x="5" y="18" width="9" height="9" rx="2"/><path d="M22.5 18v9m-4.5-4.5h9"/></svg>
-        </div>
-        <div class="product-hero-copy">
-          <p class="product-kicker"><span></span> easyoffer / 网申填写助手</p>
-          <h1 id="product-title"><span>从一份简历</span><em>到每一次网申</em></h1>
-          <p class="product-intro">把简历资料带进网申表单，把心仪的岗位留在求职工作台。</p>
-          <div class="product-actions">
-            <a class="product-primary" href="#profile-overview">打开我的简历 <span aria-hidden="true">→</span></a>
-            <a class="product-secondary" href="#product-demo">看填写演示 <span aria-hidden="true">↓</span></a>
-          </div>
-        </div>
-        <div class="product-quicklinks" aria-label="产品功能快捷入口">
-          <a href="#section-parser"><span>01</span> 简历导入与解析</a>
-          <a href="#help-fill"><span>02</span> 三种填写方式</a>
-          <a href="#tracker"><span>03</span> 岗位与投递进度</a>
-        </div>
+        <section class="home-workflow" id="product-workflow" aria-labelledby="workflow-title">
+          <h2 id="workflow-title" tabindex="-1">一次网申怎么走</h2>
+          <ol class="home-steps">
+            <li>
+              <h3>准备简历</h3>
+              <p>打开这次投递要用的简历，核对个人信息、教育和项目经历。</p>
+              <a class="flow-link" href="#profile-overview">打开我的简历 <span aria-hidden="true">→</span></a>
+            </li>
+            <li>
+              <h3>填写并核对网申</h3>
+              <p>在招聘网页打开易offer侧栏，选好简历后点「一键填入」。遇到空着的字段，可以用资料速查补填。</p>
+              <a class="flow-link" href="#help-fill-demo">自动填写与 AI 演示 <span aria-hidden="true">→</span></a>
+              <section class="home-lookup" id="product-demo" aria-labelledby="product-demo-title">
+                <header><div>
+                  <h4 id="product-demo-title" tabindex="-1">试一试资料速查</h4>
+                  <p>点选一个输入框，再从推荐资料中选择要填的内容。</p>
+                </div><button type="button" id="home-reset" disabled>重新体验</button></header>
+                <div class="home-practice">
+                  <fieldset><legend>示例网申表单</legend>
+                    <label>生日<input data-practice="birthday" type="text" placeholder="选择出生日期" readonly></label>
+                    <label>项目职责<input data-practice="duty" type="text" placeholder="选择一段项目职责" readonly></label>
+                  </fieldset>
+                  <div class="home-source"><h5>当前字段的资料</h5>
+                    <p id="home-practice-status" role="status">尚未选择输入框</p>
+                    <div id="home-choices"></div>
+                  </div>
+                </div>
+              </section>
+            </li>
+            <li>
+              <h3>提交后跟进投递</h3>
+              <p>在招聘网页核对并提交，再从侧栏点「记录此岗位」。收到笔试或面试通知时，到工作台更新阶段和时间。</p>
+            </li>
+          </ol>
+        </section>
       </div>
+    </section>
 
-      <section id="product-workflow" class="product-workflow" aria-labelledby="workflow-title">
-        <header>
-          <p class="product-kicker"><span></span> THE WORKFLOW</p>
-          <h2 id="workflow-title" tabindex="-1">一次网申，三个步骤</h2>
-        </header>
-        <ol class="product-steps">
-          <li>
-            <span class="product-step-number" aria-hidden="true">01</span>
-            <h3>准备简历</h3>
-            <p>导入或编辑简历，按投递方向保存多份资料。用模块开关决定哪些经历参与填写。</p>
-            <a href="#section-parser">导入简历 <span aria-hidden="true">↗</span></a>
-            <a href="#view-modules">管理模块 <span aria-hidden="true">↗</span></a>
-          </li>
-          <li>
-            <span class="product-step-number" aria-hidden="true">02</span>
-            <h3>打开网申</h3>
-            <p>进入招聘表单，点工具栏的易offer图标打开侧栏。选定简历后，按需使用一键、增量或选区填入。</p>
-            <a href="#help-fill">查看填写方式 <span aria-hidden="true">↗</span></a>
-            <a href="#help-quick">资料速查与点选补填 <span aria-hidden="true">↗</span></a>
-          </li>
-          <li>
-            <span class="product-step-number" aria-hidden="true">03</span>
-            <h3>填入并核对</h3>
-            <p>需要检查时可以暂停。核对表单后自行提交，再从侧栏记录岗位，确认信息后保存到工作台。</p>
-            <a href="#help-pause">暂停与恢复 <span aria-hidden="true">↗</span></a>
-            <a href="#tracker">记录投递 <span aria-hidden="true">↗</span></a>
-          </li>
-        </ol>
-      </section>
-
-      <section id="product-demo" class="product-workflow product-demo" aria-labelledby="product-demo-title" data-stage="local">
-        <div class="product-demo-guide">
-          <p class="product-kicker"><span></span> 填写演示</p>
-          <h2 id="product-demo-title" tabindex="-1">一张表单，<br>三种处理方式</h2>
-          <p>切换下面的步骤，看看哪些字段由易offer直接填入，哪些需要 AI 或你本人处理。</p>
+    <template id="fill-guide-template">
+      <section id="help-fill-demo" tabindex="-1" class="product-demo" aria-labelledby="fill-guide-title" data-stage="local">
+        <div class="product-demo-head">
+          <h2 id="fill-guide-title" tabindex="-1">自动填写与 AI 助填示例</h2>
+          <p>切换示例，查看标准字段、开放题和缺少具体日期时的填写结果。</p>
           <div class="product-demo-steps" role="group" aria-label="演示步骤">
             <button type="button" data-demo-stage="local" aria-pressed="true"><small>01</small><span>标准字段</span><span aria-hidden="true">↗</span></button>
             <button type="button" data-demo-stage="ai" aria-pressed="false"><small>02</small><span>AI 助填</span><span aria-hidden="true">↗</span></button>
             <button type="button" data-demo-stage="review" aria-pressed="false"><small>03</small><span>人工核对</span><span aria-hidden="true">↗</span></button>
           </div>
-          <a class="shell-link" href="#help-ai">查看 AI 配置与使用说明 ↗</a>
         </div>
-
         <div class="product-demo-console">
           <header class="product-demo-bar">
             <span class="product-demo-lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -194,11 +178,12 @@
             </dl>
           </div>
         </div>
+        <a class="shell-link product-demo-link" href="#help-ai">查看 AI 配置与使用说明 <span aria-hidden="true">↗</span></a>
       </section>
-    </section>
+    </template>
 
     <!-- 视图 1: 简历资料配置（三栏工作区：模块导航 / 概览与单模块编辑 / 简历管理） -->
-    <div id="view-profile" class="tab-view active">
+    <div id="view-profile" class="tab-view active" style="display: none">
       <div class="profile-workspace">
 
       <!-- 左栏：概览 / 单模块导航 (仅在简历配置视图有效) -->
@@ -1071,9 +1056,11 @@
   <script src="../scripts/backup-directory.js"></script>
   <script src="../scripts/resume-parser.js"></script>
   <script src="options.js"></script>
+  <script src="entry-editor.js"></script>
   <script src="date-controls.js"></script>
   <script src="tracker.js"></script>
   <script src="app-shell.js"></script>
+  <script src="home.js"></script>
   <script src="product-demo.js"></script>
 </body>
 </html>

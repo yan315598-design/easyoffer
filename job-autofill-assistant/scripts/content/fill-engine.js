@@ -552,9 +552,6 @@ async function fillForm(profile, options) {
       case 'namePinyinFull':
         valueToFill = profile.basicInfo?.namePinyinFull;
         break;
-      case 'personalPromise':
-        valueToFill = profile.basicInfo?.personalPromise;
-        break;
       case 'age':
         // 年龄不落库，按出生日期动态推算；birthDate 缺失返回空串即不填
         valueToFill = computeAgeFromBirthDate(profile.basicInfo?.birthDate, new Date());

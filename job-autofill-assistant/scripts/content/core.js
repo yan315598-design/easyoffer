@@ -440,10 +440,6 @@ var  FIELD_PATTERNS = {
     /^(first[-_\s]?name[-_\s]?pinyin|名字拼音|名拼音)$/i,
     /名字拼音|名[\s(（的]*拼音|first[-_\s]?name[-_\s]?pinyin/i
   ],
-  personalPromise: [
-    /^(personal[-_\s]?promise|个人声明|个人承诺|本人承诺)$/i,
-    /personal[-_\s]?promise/i
-  ],
 
   // 年龄：无存储字段，按出生日期动态推算（birthDate 缺失不填）
   age: [

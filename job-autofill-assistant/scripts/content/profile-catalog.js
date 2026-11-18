@@ -233,10 +233,14 @@ function quickReferenceCatalog(profile) {
   const flat = { ...profile };
   for (const section of Object.values(categories).flatMap(Object.keys)) delete flat[section];
   return Object.fromEntries(Object.entries(categories).map(([category, sections]) => {
-    const groups = [{
-      title: { basic: '基本信息与求职意向', edu: '外语成绩', exp: '补充资料', qa: '问答与自述' }[category],
+    const base = category === 'basic' ? [
+      { title: '基础信息', items: getCopyItemsForCategory({ basicInfo: flat.basicInfo }, category) },
+      { title: '求职意向', items: getCopyItemsForCategory({ jobIntention: flat.jobIntention }, category) }
+    ] : [{
+      title: { edu: '外语成绩', exp: '补充资料', qa: '问答与自述' }[category],
       items: getCopyItemsForCategory(flat, category)
-    }].filter(group => group.items.length);
+    }];
+    const groups = base.filter(group => group.items.length);
     for (const [section, heading] of Object.entries(sections)) {
       const entries = section === 'skills' ? profileSkillEntries(profile) : section === 'languageCertificates'
         ? profileLanguageEntries(profile) : profile[section] || [];
@@ -246,18 +250,33 @@ function quickReferenceCatalog(profile) {
         const items = Object.entries(entry || {}).filter(([key, val]) =>
           !['id', 'createdAt', 'updatedAt'].includes(key) && ['string', 'number'].includes(typeof val) && String(val).trim() && val !== '~')
           .map(([key, val]) => {
-            const label = (section === 'skills' ? { name: '技能名称', category: '技能类别', proficiency: '熟练程度', description: '补充说明' }[key] : '') ||
-              resolveFieldLabel(section, key);
+            const label = quickEntryLabels[section]?.[key] || profileSchema[section]?.[key] ||
+              quickEntryLabels.common[key] || FIELD_LABELS[key] || resolveFieldLabel(section, key);
             return { key, label, val: String(val), block: String(val).length > 100 || String(val).includes('\n') };
           });
         if (!items.length) return;
         groups.push({ section, entry, items, heading,
-          title: entry.school || entry.company || entry.name || entry.title || entry.language || entry.organization || `第 ${index + 1} 条` });
+          title: entry.school || entry.company || entry.name || entry.title || entry.language || entry.organization || `第 ${index + 1} 条`,
+          recordKey: JSON.stringify([section, entry.id || ['legacy', index]]) });
       });
     }
     return [category, groups];
   }));
 }
+
+var quickEntryLabels = {
+  common: { name: '名称', startDate: '开始时间', endDate: '结束时间', date: '日期', description: '描述',
+    role: '担任角色', achievements: '成果', issuer: '颁发机构', level: '级别', url: '链接' },
+  education: { school: '毕业院校', description: '在校经历' },
+  projects: { name: '项目名称', role: '担任角色', projectType: '项目类型', description: '项目描述',
+    responsibilities: '项目职责', achievements: '项目成果' },
+  workExperience: { description: '工作内容', achievements: '工作成果', workType: '经历类型' },
+  skills: { name: '技能名称', category: '技能类别', proficiency: '熟练程度', description: '补充说明' },
+  familyMembers: { name: '姓名', relation: '与本人关系', employer: '工作单位', position: '职务', phone: '联系电话' },
+  awards: { name: '奖项名称' }, certificates: { name: '证书名称', code: '证书编号', expiryDate: '有效期至' },
+  papers: { name: '论文名称', publisher: '期刊/出版社', abstract: '论文摘要' },
+  patents: { name: '专利名称', inventor: '发明人' }
+};
 
 function getCopyItemsForCategory(profile, category) {
   if (!profile) return [];
@@ -322,7 +341,6 @@ function getCopyItemsForCategory(profile, category) {
     pushCopyRow(items, '招聘信息来源', b.jobSources);
     pushCopyRow(items, '是否取得外国国籍', b.foreignCitizenship);
     pushCopyRow(items, '亲属在目标单位任职', b.relativesEmployed);
-    pushCopyRow(items, '个人声明/承诺', b.personalPromise);
 
     pushCopyRow(items, '完整住址', b.address);
     pushCopyRow(items, '省/州', b.state);

@@ -123,6 +123,11 @@ function csvRecords(text) {
  });
 }
 async function read(){const all=await chrome.storage.local.get([KEY,'yanyuSubmissionsV1']);const data=all[KEY] || {profiles:[],submissions:[]};if(Array.isArray(all.yanyuSubmissionsV1))data.submissions=all.yanyuSubmissionsV1;return data;}
+async function readOverviewRecords() {
+ const recent = (await chrome.storage.local.get('yanyuSubmissionsV1')).yanyuSubmissionsV1;
+ const rows = Array.isArray(recent) ? recent : (await read()).submissions || [];
+ return rows.map(row => ({ ...normalize(row), id: row.id }));
+}
 function snapshot(records) {
  return JSON.stringify(records, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value);
@@ -138,7 +143,7 @@ async function write(records, baseline) {
  return navigator.locks ? navigator.locks.request('yanyu-submissions',run) : run();
 }
 const mounts=new WeakMap();
-async function mount(root){
+async function mount(root, route = '#tracker'){
  mounts.get(root)?.abort();const controller=new AbortController();mounts.set(root,controller);const listenerOptions={signal:controller.signal};
  const migrate = async () => {
    const all = await chrome.storage.local.get([KEY, 'yanyuSubmissionsV1']);
@@ -407,6 +412,21 @@ async function mount(root){
  };
  syncTypeFilter();
  render();
+ if (root.hidden || controller.signal.aborted) return;
+ if (route.startsWith('#tracker-stage-')) {
+   const stage = stages.find(value => '#tracker-stage-' + encodeURIComponent(value) === route);
+   if (stage) {
+     root.querySelector('[name="stage"]').value = stage;
+     render();
+   }
+   return;
+ }
+ if (route.startsWith('#tracker-record-')) {
+   const record = records.find(row => '#tracker-record-' + encodeURIComponent(row.id) === route);
+   if (record) edit(record);
+   return;
+ }
+ if (route === '#tracker-add') { edit(); return; }
  const draftId = new URLSearchParams(location.search).get('draft');
  if (draftId && chrome.storage.session) {
    const key = 'yanyuTrackerDraft:' + draftId;
@@ -423,5 +443,5 @@ async function mount(root){
    }
  }
 }
-window.YanyuTracker={mount,normalize,csvParse,csvSerialize,csvRecords,stages};
+window.YanyuTracker={mount,normalize,csvParse,csvSerialize,csvRecords,stages,readOverviewRecords,stageLabel};
 })();
