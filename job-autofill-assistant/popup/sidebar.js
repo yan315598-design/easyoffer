@@ -13,6 +13,10 @@ const Sidebar = (() => {
   let previewSession = null;
   let lastResult = null;
   let taskRunning = false;
+  let currentTaskId = null;
+  let completionShown = null;
+  let taskSequence = 0;
+  let taskCheckTimer;
   let revision = 0;
   let refreshTimer;
 
@@ -84,6 +88,11 @@ const Sidebar = (() => {
   function recommended(groups) {
     if (!target) return [];
     const labels = [target.label, FIELD_LABELS[target.fieldType]].filter(Boolean).map(fieldName);
+    if (target.partyStatus !== undefined) {
+      const source = politicalMembership(currentProfile?.basicInfo?.politicalStatus);
+      if (!source || (target.partyStatus !== null && politicalMembership(target.partyStatus) !== source)) return [];
+      labels.splice(0, labels.length, fieldName(FIELD_LABELS[membershipDateKey(source)]));
+    }
     const equivalents = new Set(labels);
     for (const names of aliases) {
       if (names.some(name => equivalents.has(name))) names.forEach(name => equivalents.add(name));
@@ -357,9 +366,18 @@ const Sidebar = (() => {
 
   function showDetails(origin, result) {
     if (!samePage(origin, tab)) return;
-    const reasons = { value_reset: '网页清空或改写了选中值', validation_failed: '网页校验未通过',
+    const reasons = { value_reset: '网页清空或改写了刚填入的内容', validation_failed: '网页校验未通过',
+      beisen_text_unconfirmed: '网页没有确认这项文本，请在页面核对',
+      control_replaced: '网页重建了此字段，请核对当前值',
       date_precision_required: '需要完整日期', record_ambiguous: '无法确认对应条目', unrecognized_field: '字段未识别',
       range_not_committed: '日期范围未确认', no_profile_value: '简历没有对应资料', low_confidence: '匹配置信度不足',
+      conflicting_highest_education: '多段教育经历同时标为最高全日制学历',
+      document_type_mismatch: '请核对证件类型与号码',
+      region_district_unavailable: '简历中的区县不在网站列表，请核对现行区县',
+      salary_unit_unconfirmed: '请核对金额、币种和年薪单位',
+      manual_confirmation_required: '该声明需要本人确认',
+      dependent_option_unconfirmed: '请先核对本行语种和考试', political_status_unconfirmed: '请先核对网页党派与简历政治面貌',
+      beisen_control_mismatch: '网页未确认与简历匹配的选项',
       write_failed_or_option_not_found: '控件未接受或未找到匹配选项' };
     const labels = new Set([
       ...(Array.isArray(result.manualFields) ? result.manualFields : []),
@@ -383,13 +401,68 @@ const Sidebar = (() => {
   }
 
   function setTaskState(message) {
-    taskRunning = message.running;
+    if (message.sequence && message.sequence < taskSequence) return;
+    taskSequence = message.sequence || 0;
+    clearTimeout(taskCheckTimer);
+    const changed = taskRunning !== Boolean(message.running);
+    taskRunning = Boolean(message.running);
+    currentTaskId = message.taskId;
     el('sidebarTaskControls').hidden = !taskRunning;
     el('sidebarPause').textContent = message.paused ? '继续填入' : '暂停';
-    for (const button of document.querySelectorAll('.sidebar-quick-results [data-write]')) button.disabled = !target || taskRunning;
+    el('sidebarPause').title = message.blocked ? '处理完网页弹窗后继续' : '';
+    const undo = el('sidebarUndo');
+    undo.hidden = taskRunning || !message.undoId;
+    undo.dataset.taskId = message.undoId || '';
+    if (changed) {
+      for (const button of document.querySelectorAll('#sidebarPageActions button')) button.disabled = taskRunning;
+      for (const button of document.querySelectorAll('.sidebar-quick-results [data-write]')) button.disabled = !target || taskRunning;
+    }
+    if (taskRunning) {
+      if (el('taskFeedback').classList.contains('is-loading')) hideTaskFeedback();
+      const progress = el('fillProgress');
+      if (message.total > 0) {
+        progress.max = message.total;
+        progress.value = message.done;
+      } else progress.removeAttribute('value');
+      const stages = { structure: '正在检查经历条目', declarations: '正在核对声明', site: '正在填写网站字段',
+        fields: '正在填写', supplement: '正在核对填写结果', ai: '正在处理 AI 问题' };
+      el('fillProgressText').textContent = message.blocked ? '网页弹出了登录或确认框，处理后点击继续。'
+        : message.paused ? '填写已暂停' : message.slow ? '网页仍在处理，可继续等待或取消。'
+        : [stages[message.stage] || '正在准备填写', message.total ? `${message.done}/${message.total}` : '', message.label].filter(Boolean).join(' · ');
+      if (!message.paused && tab) taskCheckTimer = setTimeout(verifyTask, 15000, tab, message.requestId, true);
+    }
+    const completionKey = message.completion && `${message.completion.requestId}/${message.completion.revision || 0}`;
+    if (completionKey && completionShown !== completionKey) {
+      completionShown = completionKey;
+      showFillCompletion(tab, message.completion);
+    }
+  }
+
+  async function verifyTask(origin, requestId, slow = false) {
+    const connectionRevision = revision;
+    try {
+      const state = await sendTabMessage(origin.id, { action: 'queryFillTaskState' }, 3000);
+      if (connectionRevision !== revision || !samePage(tab, origin) || state?.url !== tab.url || state.sequence < taskSequence) return;
+      if (requestId && state.requestId !== requestId) {
+        if (!state.running) showTaskFeedback('warning', '网页没有收到本轮任务，可以重新开始填写。');
+        return;
+      }
+      setTaskState({ ...state, slow });
+    } catch (error) {
+      if (connectionRevision !== revision || !samePage(origin, tab)) return;
+      if (error.name === 'TimeoutError') {
+        if (taskRunning) el('fillProgressText').textContent = '网页暂未回应，可继续等待或取消。';
+        else showTaskFeedback('warning', '网页暂未回应，正在核对本轮填写。');
+        clearTimeout(taskCheckTimer);
+        taskCheckTimer = setTimeout(verifyTask, 15000, origin, requestId, true);
+      } else showTaskFeedback('warning', friendlyTabError(error));
+    }
   }
 
   function resetConnection() {
+    el('pageFitToggle').hidden = true;
+    displayRegionChoice(null);
+    completionShown = null;
     const oldPort = port;
     port = null;
     oldPort?.disconnect();
@@ -403,6 +476,7 @@ const Sidebar = (() => {
     clearTimeout(refreshTimer);
     if (changedPage) {
       tab = null;
+      pageSummary = null;
       clearResult();
       resetConnection();
       hideTaskFeedback();
@@ -441,6 +515,15 @@ const Sidebar = (() => {
       port = connection;
       connection.onMessage.addListener(message => {
         if (port !== connection || message.url !== tab?.url) return;
+        if (message.kind === 'pageFit') {
+          el('pageFitToggle').hidden = !message.status;
+          el('pageFitToggle').textContent = message.status === 'fitted' ? '恢复网页大小' : '适应网页宽度';
+        }
+        if (message.kind === 'regionSelection') displayRegionChoice(message.selection);
+        if (message.kind === 'pageSummary') {
+          pageSummary = message.summary;
+          setPageStatus('ready');
+        }
         if (message.kind === 'target') showTarget(message.target);
         if (message.kind === 'task') setTaskState(message);
         if (message.kind === 'regionResult' && message.count > 0) {
@@ -454,6 +537,10 @@ const Sidebar = (() => {
         resetConnection();
         setPageStatus('needs-action', error ? '无法连接到网页' : '网页连接已断开');
       });
+      // A panel opened in a regular extension tab has no effect on the job page layout.
+      chrome.tabs.getCurrent().then(ownTab => {
+        if (!ownTab && connection === port) connection.postMessage({ kind: 'nativePanel' });
+      }).catch(() => {});
     } catch (error) {
       if (version !== revision) return;
       if (!error.reason) setPageStatus('needs-action', error.message);
@@ -464,13 +551,68 @@ const Sidebar = (() => {
     const origin = tab;
     try {
       if (!samePage(origin, await getActiveTab())) return;
-      await sendTabMessage(origin.id, { action }, 3000);
+      const reply = await sendTabMessage(origin.id, { action, taskId: currentTaskId }, 3000);
+      if (samePage(origin, tab) && action === 'pauseFill' && !reply?.success && reply?.paused) {
+        showTaskFeedback('warning', '请先处理或关闭网页弹窗，再继续填写。');
+      }
     } catch (error) {
       showTaskFeedback('warning', friendlyTabError(error));
     }
   }
 
+  let regionToken = '';
+
+  function displayRegionChoice(selection) {
+    const box = el('regionChoice');
+    const select = el('regionEntry');
+    regionToken = selection?.token || '';
+    box.hidden = !regionToken;
+    select.replaceChildren();
+    el('regionApply').disabled = true;
+    if (!regionToken) return;
+    el('regionChoiceCount').textContent = `已框选 ${selection.fields} 个空白字段`;
+    select.add(new Option('请选择资料条目', ''));
+    for (const category of selection.categories) {
+      const group = document.createElement('optgroup');
+      group.label = category.name;
+      for (const item of category.items) {
+        const option = new Option(item.summary || category.name, String(item.idx));
+        option.dataset.category = category.key;
+        group.append(option);
+      }
+      select.append(group);
+    }
+    box.scrollIntoView({ block: 'nearest' });
+    select.focus({ preventScroll: true });
+  }
+
+  async function finishRegionChoice(cancel) {
+    const origin = tab;
+    const token = regionToken;
+    const option = el('regionEntry').selectedOptions[0];
+    if (!token || (!cancel && !option?.dataset.category)) return;
+    el('regionApply').disabled = true;
+    try {
+      if (!samePage(origin, await getActiveTab()) || token !== regionToken) return;
+      const result = await sendTabMessage(origin.id, { action: cancel ? 'cancelRegionSelection' : 'selectRegionEntry',
+        token, url: origin.url, category: option?.dataset.category, idx: Number(option?.value) }, 3000);
+      if (!result?.success && token === regionToken) {
+        displayRegionChoice(null);
+        showTaskFeedback('warning', '选区已变化，请重新框选。');
+      }
+    } catch (error) {
+      if (token === regionToken) {
+        el('regionApply').disabled = !option?.dataset.category;
+        showTaskFeedback('warning', friendlyTabError(error));
+      }
+    }
+  }
+
   function bind() {
+    el('pageFitToggle').onclick = () => port?.postMessage({ kind: 'togglePageFit', url: tab?.url });
+    el('regionEntry').onchange = () => { el('regionApply').disabled = !el('regionEntry').value; };
+    el('regionApply').onclick = () => finishRegionChoice(false);
+    el('regionDismiss').onclick = () => finishRegionChoice(true);
     for (const button of document.querySelectorAll('[data-sidebar-view]')) {
       button.onclick = () => sidebarView(button.dataset.sidebarView);
     }
@@ -485,6 +627,24 @@ const Sidebar = (() => {
     };
     el('sidebarPause').onclick = () => controlTask('pauseFill');
     el('sidebarCancel').onclick = () => controlTask('cancelFill');
+    el('sidebarUndo').onclick = async event => {
+      const origin = tab, button = event.currentTarget;
+      const taskId = button.dataset.taskId;
+      button.disabled = true;
+      try {
+        if (!samePage(origin, await getActiveTab())) return;
+        const result = await sendTabMessage(origin.id, { action: 'undoFillText', taskId }, 3000);
+        if (!samePage(origin, tab)) return;
+        if (!result?.success) showTaskFeedback('warning', result?.error || '这轮填写已失效。');
+        else {
+          clearResult();
+          const kept = result.kept ? `，另有 ${result.kept} 个字段已改动或移除` : '';
+          showTaskFeedback('info', `已恢复 ${result.restored} 个文本字段${kept}。下拉、日期和新增条目请自行核对。`);
+        }
+      } catch (error) {
+        if (samePage(origin, tab)) showTaskFeedback('warning', friendlyTabError(error));
+      } finally { button.disabled = false; }
+    };
     el('captureResultBtn').onclick = event => captureCurrentJob(event, lastResult);
     el('highlightBtn').onclick = async () => {
       try {
@@ -492,7 +652,7 @@ const Sidebar = (() => {
         const outcome = await sendTabTaskWithReady(active, { action: 'toggleFieldHighlights' }, 5000);
         if (samePage(tab, active)) showToast(outcome.response?.highlighted ? '已开启字段高亮' : '已关闭字段高亮');
       } catch (error) {
-        showTaskFeedback('warning', friendlyTabError(error));
+        showToast(friendlyTabError(error), 'warning');
       }
     };
     chrome.tabs.onActivated.addListener(info => {
@@ -518,7 +678,7 @@ const Sidebar = (() => {
     drawCatalog();
   }
 
-  return { bind, refresh, clearResult, showDetails, rememberResult, profileChanged() {
+  return { bind, refresh, clearResult, showDetails, rememberResult, verifyTask, isTaskRunning: () => taskRunning, profileChanged() {
     catalogRevision++;
     if (catalogProfileId !== currentProfile?.id) {
       catalogProfileId = currentProfile?.id;

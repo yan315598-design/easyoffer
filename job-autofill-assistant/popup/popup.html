@@ -49,6 +49,7 @@
       <button type="button" data-sidebar-view="quick" aria-pressed="true">资料速查</button>
     </nav>
     <div class="sidebar-command">
+      <button type="button" id="pageFitToggle" class="btn btn-soft" hidden>恢复网页大小</button>
       <button type="button" id="captureJobBtn" class="btn btn-secondary">＋ 记录此岗位</button>
       <a href="../options/options.html#tracker" data-workspace-link class="footer-link">求职工作台 ↗</a>
     </div>
@@ -165,6 +166,7 @@
     <div id="taskFeedback" class="task-feedback" role="status" hidden>
       <span class="tf-indicator" aria-hidden="true"></span>
       <span id="taskFeedbackText" class="tf-text"></span>
+      <button type="button" id="dismissTaskFeedback" aria-label="关闭填写提示" title="关闭填写提示">×</button>
     </div>
     <details class="sidebar-details" id="sidebarDetails" hidden>
       <summary>查看待核对字段</summary>
@@ -172,9 +174,23 @@
       <a href="../options/options.html#help-controls" data-workspace-link>下拉框与地区填写说明 ↗</a>
     </details>
     <div class="sidebar-task-controls" id="sidebarTaskControls" hidden>
+      <div class="sidebar-task-progress">
+        <span id="fillProgressText" role="status"></span>
+        <progress id="fillProgress" aria-label="填写进度"></progress>
+      </div>
       <button type="button" id="sidebarPause" class="btn btn-soft">暂停</button>
       <button type="button" id="sidebarCancel" class="btn btn-soft">取消任务</button>
     </div>
+    <button type="button" id="sidebarUndo" class="btn btn-soft" title="恢复本轮写入的普通文本字段。下拉、日期和新增条目请自行核对。" hidden>撤销本轮文本填入</button>
+    <section id="regionChoice" class="card sidebar-quick" aria-labelledby="regionChoiceHeading" hidden>
+      <h2 id="regionChoiceHeading" class="sidebar-block-title">选择要填入选区的资料</h2>
+      <p id="regionChoiceCount"></p>
+      <select id="regionEntry" aria-label="选区资料条目"></select>
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="regionApply" disabled>填入选区</button>
+        <button type="button" class="btn btn-soft" id="regionDismiss">取消</button>
+      </div>
+    </section>
     <section id="sidebarResult" class="sidebar-result" hidden>
       <p>请在招聘网站核对填写结果。想跟进这个岗位，可以把它记到工作台。</p>
       <button type="button" id="captureResultBtn" class="btn btn-secondary">记录此岗位</button>

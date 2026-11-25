@@ -24,6 +24,53 @@ function publishSidePanel(message) {
   }
 }
 
+function getFillPageSummary() {
+  const fields = new Set();
+  const selector = SMART_FILL_FIELD_SELECTOR + ', input[type="radio"], input[type="search"], [contenteditable="true"]';
+  for (const node of document.querySelectorAll(selector)) {
+    const field = writableBox(node);
+    const widget = field.closest('.ant-picker, .el-date-editor, ' + SMART_FILL_WIDGET_CONTAINER_SELECTOR);
+    if (field.disabled || field.closest('[aria-disabled="true"], fieldset:disabled') ||
+        (field.readOnly && !widget && !isSelectWidget(field)) || isIgnoredInput(field) ||
+        (!isElementTrulyVisible(field) && !isElementTrulyVisible(widget || (field.type === 'radio' && field.closest('label'))))) continue;
+    fields.add(field);
+  }
+  // Some resume editors start with empty repeatable sections, or just a resume attachment.
+  const hasResumeForm = fields.size > 0 || [...document.querySelectorAll('input[type="file"]')].some(node =>
+    !node.disabled && attachmentSlot(node) &&
+    (isElementTrulyVisible(node) || isElementTrulyVisible(node.parentElement))) ||
+    repeatModules().some(module => repeatAddControl(module, []));
+  return { fillableCount: fields.size, hasResumeForm };
+}
+
+function publishPageSummary() {
+  if (!contentMainState.sidePanelPorts?.size) return;
+  const summary = getFillPageSummary();
+  if (contentMainState.lastPageSummary?.fillableCount === summary.fillableCount &&
+      contentMainState.lastPageSummary?.hasResumeForm === summary.hasResumeForm) return;
+  contentMainState.lastPageSummary = summary;
+  publishSidePanel({ kind: 'pageSummary', summary });
+}
+
+function observeFillPageSummary() {
+  if (contentMainState.pageObserver) return;
+  let timer;
+  const observer = new MutationObserver(mutations => {
+    if (timer || mutations.every(mutation => mutation.target.closest?.('[id^="job-autofill-"]'))) return;
+    timer = setTimeout(() => {
+      timer = null;
+      publishPageSummary();
+    }, 220);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true,
+    attributeFilter: ['disabled', 'readonly', 'hidden', 'aria-disabled', 'class', 'style', 'type'] });
+  contentMainState.pageObserver = () => {
+    observer.disconnect();
+    clearTimeout(timer);
+    contentMainState.pageObserver = null;
+  };
+}
+
 function publishSidePanelTarget() {
   if (!contentMainState.sidePanelPorts?.size) return;
   const selected = getFillTarget();
@@ -37,6 +84,9 @@ function publishSidePanelTarget() {
         identity: context ? Object.fromEntries(repeatRowIdentity(context.module, context.row)
           .map(({ key, actual }) => [key, actual])) : undefined }
     : null;
+  if (target?.label === '加入党派时间' && selected.el.closest('.form-item--phoenix')) {
+    target.partyStatus = beisenPartyStatus(selected.el.closest('.ux-standard-form'));
+  }
   publishSidePanel({ kind: 'target', target });
 }
 
@@ -104,7 +154,140 @@ async function applySidePanelRow(request, target) {
 
 function publishSidePanelTask() {
   if (!contentMainState.sidePanelPorts?.size) return;
-  publishSidePanel({ kind: 'task', running: Boolean(activeFillTask?.running), paused: Boolean(activeFillTask?.paused) });
+  publishSidePanel({ kind: 'task', ...sidePanelTaskState() });
+}
+
+// A React form can roll back a controlled input after the fill task has finished.
+// Value-property changes need no DOM mutation. Only a verified original write can
+// change status. Never send its committed value or row identity to the side panel.
+function reconcileBeisenTextResult(run) {
+  if (!run?.completion || run.url !== location.href || !run.beisenRows?.length) return false;
+  const cache = {};
+  const byItem = new Map();
+  const totals = {...run.otherCounts};
+  const details = [...run.otherDetails];
+  for (const row of run.beisenRows) {
+    const item = beisenCurrentItem(row.proof, cache);
+    if (!row.edited && row.proof.expected != null) {
+      row.reason = beisenResultStatus(row.proof, item);
+      row.status = row.reason ? 'needs_review' : row.proof.retained ? 'skipped_has_value' : 'filled';
+    }
+    const key = item || row.proof.item;
+    const previous = byItem.get(key);
+    if (!previous || beisenResultRank(row) > beisenResultRank(previous)) byItem.set(key, row);
+  }
+  for (const {label, status, reason} of byItem.values()) {
+    totals[status] = (totals[status] || 0) + 1;
+    if (status === 'needs_review' || status === 'failed') details.push({label, status, reason});
+  }
+  const result = run.completion;
+  if (result.filledCount === totals.filled && result.reviewCount === totals.needs_review &&
+      result.skippedCount === totals.skipped_has_value && result.failedCount === totals.failed &&
+      JSON.stringify(result.results) === JSON.stringify(details)) return false;
+  Object.assign(result, {filledCount: totals.filled, reviewCount: totals.needs_review, skippedCount: totals.skipped_has_value,
+    failedCount: totals.failed, results: details, revision: (result.revision || 0) + 1});
+  return true;
+}
+
+function watchBeisenTextResult(run) {
+  if (!run?.beisenRows?.some(row => !row.edited && row.proof.expected != null) ||
+      run.textTimer || !contentMainState.sidePanelPorts?.size || run.url !== location.href) return;
+  run.textTimer = setTimeout(() => {
+    run.textTimer = null;
+    if (contentMainState.panelRun !== run || activeFillTask?.running || !contentMainState.sidePanelPorts?.size) return;
+    if (reconcileBeisenTextResult(run)) publishSidePanelTask();
+    watchBeisenTextResult(run);
+  }, 1200);
+}
+
+function sidePanelTaskState() {
+  const task = activeFillTask;
+  const run = contentMainState.panelRun;
+  if (!task?.running && run?.completion) {
+    reconcileBeisenTextResult(run);
+    watchBeisenTextResult(run);
+  }
+  contentMainState.taskRevision = (contentMainState.taskRevision || 0) + 1;
+  return {
+    sequence: contentMainState.taskRevision,
+    running: Boolean(task?.running), paused: Boolean(task?.paused), blocked: Boolean(task?.blockingDialog),
+    taskId: task?.id, done: task?.done || 0, total: task?.total || 0, label: task?.currentLabel || '', stage: task?.stage,
+    undoId: lastFillUndo?.url === location.href ? lastFillUndo.id : null,
+    completion: !task?.running && run?.url === location.href ? run.completion : null,
+    requestId: run?.url === location.href ? run.requestId : null
+  };
+}
+
+function startSidePanelFill(request) {
+  if (request.url !== location.href) return { success: false, error: '页面已切换，请重新选择填写页面。' };
+  if (activeFillTask?.running) return { success: false, error: '已有填写任务正在进行。' };
+  if (!getFillPageSummary().hasResumeForm) return { success: false, error: '未检测到网申表单，请先进入简历填写页。' };
+  if (!contentMainState.beisenResultEditListenerBound) {
+    contentMainState.beisenResultEditListenerBound = true;
+    const stopCheckingEditedField = event => {
+      const run = contentMainState.panelRun;
+      if (!event.isTrusted || !run?.beisenRows || run.url !== location.href) return;
+      let item = event.target.closest?.('.form-item--phoenix');
+      if (event.type === 'click' || event.type === 'keydown') {
+        if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+        const menu = event.target.closest?.('.phoenix-selectList__listItem,.phoenix-calendar-cell,.phoenix-calendar-month-panel-cell,.selector-footer-button');
+        if (menu && run.openedWidget) item = run.openedWidget;
+        else if (item && event.target.closest('.phoenix-select')) {
+          run.openedWidget = item;
+          return;
+        } else if (!event.target.closest?.('.phoenix-radio')) {
+          run.openedWidget = null;
+          return;
+        }
+      }
+      if (!item) return;
+      const cache = {};
+      for (const row of run.beisenRows) {
+        if (row.edited || row.proof.expected == null || row.proof.label !== beisenLabel(item) ||
+            beisenCurrentItem(row.proof, cache) !== item) continue;
+        if (event.type === 'beforeinput' || event.type === 'click' || event.type === 'keydown') {
+          row.reason = beisenResultStatus(row.proof, item);
+          row.status = row.reason ? 'needs_review' : row.proof.retained ? 'skipped_has_value' : 'filled';
+        }
+        row.edited = true;
+      }
+    };
+    for (const type of ['beforeinput', 'input', 'change', 'click', 'keydown']) document.addEventListener(type, stopCheckingEditedField, true);
+  }
+  const run = { requestId: request.requestId, profileId: request.profile.id, url: location.href,
+    mode: request.mode, ai: Boolean(request.ai), completion: null };
+  contentMainState.panelRun = run;
+  const work = run.ai ? aiStepByStepFill(request.profile)
+    : fillForm(request.profile, { mode: run.mode, completeRows: request.completeRows === true });
+  const task = activeFillTask;
+  work.then(result => {
+    // 侧栏只需要计数和核对提示，避免传输 DOM 元素或整份填写记录。
+    const { filledCount, count, cancelled, error, manualFields, skippedCount, reviewCount, failedCount, aiConfigured } = result || {};
+    run.completion = { filledCount: filledCount ?? count ?? 0, cancelled, error, manualFields,
+      skippedCount, reviewCount, failedCount, aiConfigured, results: (result?.results || [])
+        .filter(row => row.status === 'needs_review' || row.status === 'failed')
+        .map(({ label, status, reason }) => ({ label, status, reason })) };
+    run.beisenRows = [];
+    run.otherCounts = {filled: run.completion.filledCount, needs_review: reviewCount || 0,
+      skipped_has_value: skippedCount || 0, failed: failedCount || 0};
+    run.otherDetails = [];
+    for (const row of result?.results || []) {
+      const {label, status, reason} = row;
+      const proof = beisenResultProofs.get(row);
+      if (proof) {
+        run.beisenRows.push({proof, label, status, reason});
+        if (Object.hasOwn(run.otherCounts, status)) run.otherCounts[status]--;
+      } else if (status === 'needs_review' || status === 'failed') run.otherDetails.push({label, status, reason});
+    }
+  }, error => {
+    run.completion = error.name === 'AbortError' || task?.controller.signal.aborted
+      ? { cancelled: true } : { error: error.message || String(error) };
+  }).then(() => {
+    Object.assign(run.completion, { requestId: run.requestId, mode: run.mode, ai: run.ai, profileId: run.profileId,
+      undoable: task?.undo?.size || 0, completedAt: new Date().toISOString() });
+    publishSidePanelTask();
+  });
+  return { success: true, accepted: true, requestId: run.requestId };
 }
 
 // ========================================================================
@@ -119,30 +302,56 @@ function bindContentMessageListener() {
   contentMainState.sidePanelPorts = new Set();
   chrome.runtime.onConnect?.addListener(port => {
     if (port.name !== 'yanyu-side-panel') return;
+    watchSidebarPageWidth(port);
     contentMainState.sidePanelPorts.add(port);
     yanyuDockState.fallbackOpen = false;
-    if (regionFillState?.phase !== 'panel') yanyuSetDockVisible(false, false, false);
+    yanyuSetDockVisible(false, false, false);
+    if (regionFillState?.phase === 'panel') showRegionEntryPanel();
     for (const id of ['job-autofill-copy-panel', 'job-autofill-ai-panel']) {
       const drawer = document.getElementById(id);
       if (drawer) drawer.style.display = 'none';
     }
     setFillTargetFromElement(document.activeElement);
     publishSidePanelTarget();
+    contentMainState.lastPageSummary = null;
+    publishPageSummary();
+    observeFillPageSummary();
     publishSidePanelTask();
-    port.onDisconnect.addListener(() => contentMainState.sidePanelPorts.delete(port));
+    port.onDisconnect.addListener(() => {
+      contentMainState.sidePanelPorts.delete(port);
+      if (!contentMainState.sidePanelPorts.size && regionFillState) exitRegionFillMode();
+      if (!contentMainState.sidePanelPorts.size) contentMainState.pageObserver?.();
+    });
   });
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!request || typeof request.action !== 'string') return;
+
+    if (request.action === 'selectRegionEntry' || request.action === 'cancelRegionSelection') {
+      const state = regionFillState;
+      const valid = state?.phase === 'panel' && state.panelToken && request.token === state.panelToken &&
+        request.url === location.href && state.lastHref === location.href;
+      if (valid && request.action === 'cancelRegionSelection') exitRegionFillMode();
+      const success = valid && (request.action === 'cancelRegionSelection' ||
+        applySelectedRegionEntry(state, request.category, request.idx));
+      sendResponse({ success: Boolean(success) });
+      return false;
+    }
 
     // 连通性探测：init 未完成也应答，popup 只需确认脚本已就位
     if (request.action === 'contentPing') {
       sendResponse({
         success: true,
         ready: true,
+        pageSummary: getFillPageSummary(),
         version: contentMainVersion,
         initialized: contentMainState.initDone
       });
+      return false;
+    }
+
+    if (request.action === 'readJobPosting') {
+      sendResponse(readJobPosting());
       return false;
     }
 
@@ -173,8 +382,26 @@ function bindContentMessageListener() {
       applySidePanelRow(request, target).then(sendResponse).catch(() => sendResponse({ error: '填写中断，请核对已写入的字段。' }));
       return true;
     }
+    if (request.action === 'startSidePanelFill') {
+      sendResponse(startSidePanelFill(request));
+      return false;
+    }
+    if (request.action === 'queryFillTaskState') {
+      sendResponse({ ...sidePanelTaskState(), url: location.href });
+      return false;
+    }
+    if (request.action === 'undoFillText') {
+      const result = undoFillText(request.taskId);
+      if (result.success) {
+        contentMainState.panelRun = null;
+        publishSidePanelTask();
+      }
+      sendResponse(result);
+      return false;
+    }
     if (request.action === 'pauseFill') {
-      sendResponse({ success: toggleActiveFillPause(), paused: Boolean(activeFillTask?.paused) });
+      const matches = !request.taskId || request.taskId === activeFillTask?.id;
+      sendResponse({ success: matches && toggleActiveFillPause(), paused: Boolean(activeFillTask?.paused) });
       return false;
     }
     if (request.action === 'toggleFieldHighlights') {
@@ -197,7 +424,7 @@ function bindContentMessageListener() {
       return true;
     }
     if (request.action === 'cancelFill') {
-      sendResponse({ success: true, cancelled: cancelActiveFillTask() });
+      sendResponse({ success: true, cancelled: (!request.taskId || request.taskId === activeFillTask?.id) && cancelActiveFillTask() });
       return false;
     }
     if (request.action === 'aiStepByStepFill') {
@@ -314,6 +541,7 @@ function init() {
         allProfilesCache = newData.profiles;
         const newActive = newData.profiles.find((p) => p.id === newData.activeProfileId);
         if (newActive) {
+          if (regionFillState?.profile?.id && regionFillState.profile.id !== newActive.id) exitRegionFillMode();
           currentActiveProfile = newActive;
           const profileLabel = document.getElementById('job-autofill-active-profile-name');
           if (profileLabel) profileLabel.textContent = newActive.name || '默认资料';

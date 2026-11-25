@@ -142,7 +142,7 @@ function yanyuRegionRefKey(el, nameOrdinal, position) {
   return `${smartFillFieldSignature(el)}|${nameOrdinal}|${position}`;
 }
 
-function collectYanyuRegionFields(regions) {
+function collectYanyuRegionFields(regions, selectedElements) {
   const nameOrdinals = new Map();
   const refs = [];
   const skipped = new Set();
@@ -152,8 +152,12 @@ function collectYanyuRegionFields(regions) {
     const nameKey = `${el.tagName}|${name}`;
     const nameOrdinal = nameOrdinals.get(nameKey) || 0;
     nameOrdinals.set(nameKey, nameOrdinal + 1);
-    const rect = el.getBoundingClientRect();
-    if (!regions.some(region => regionControlOverlapRatio(rect, region) > REGION_OVERLAP_RATIO)) return;
+    if (selectedElements) {
+      if (!selectedElements.has(el)) return;
+    } else {
+      const rect = visibleRegionControlRect(el);
+      if (!regions.some(region => regionControlOverlapRatio(rect, region) > REGION_OVERLAP_RATIO)) return;
+    }
     const key = yanyuRegionRefKey(el, nameOrdinal, position);
     if (fieldHasValue(el)) { skipped.add(key); return; }
     const widget = el.tagName !== 'SELECT' && isWidgetSelectTrigger(el);
@@ -187,8 +191,11 @@ function exitRegionFillMode() {
     if (state.onWindowMouseUp) window.removeEventListener('mouseup', state.onWindowMouseUp);
     if (state.onWindowPointerUp) window.removeEventListener('pointerup', state.onWindowPointerUp);
     if (state.onWindowPointerCancel) window.removeEventListener('pointercancel', state.onWindowPointerCancel);
+    if (state.onScroll) document.removeEventListener('scroll', state.onScroll, true);
     if (state.root?.parentElement) state.root.parentElement.removeChild(state.root);
+    state.afterSelection?.();
     if (state.panel?.parentElement) state.panel.parentElement.removeChild(state.panel);
+    if (state.panelToken) publishSidePanel({ kind: 'regionSelection', selection: null });
   }
   // 只恢复普通 Dock / 清空资料选择视图，不删除同一个 dock host。
   if (typeof yanyuRestoreDockView === 'function') yanyuRestoreDockView();
@@ -220,7 +227,7 @@ function enterRegionSelectMode(profile) {
   const savedLayer = mk('job-autofill-region-saved-layer');
   hint.textContent = '左键拖框；Ctrl/Command 拖框可追加模块；右键取消当前框；Esc 退出';
   [shadeTop, shadeLeft, shadeRight, shadeBottom, savedLayer, crossH, crossV, rectBox, hint, sizeBadge].forEach(node => root.appendChild(node));
-  document.body.appendChild(root);
+  mountRegionOverlay(root);
 
   const viewW = () => window.innerWidth || document.documentElement.clientWidth || 0;
   const viewH = () => window.innerHeight || document.documentElement.clientHeight || 0;
@@ -229,7 +236,8 @@ function enterRegionSelectMode(profile) {
     node.style.width = `${Math.max(0, width)}px`; node.style.height = `${Math.max(0, height)}px`;
   };
   const shadeFull = () => {
-    setBlock(shadeTop, 0, 0, viewW(), viewH());
+    setBlock(shadeTop, 0, 0, 0, 0);
+    shadeTop.style.width = shadeTop.style.height = '100%';
     setBlock(shadeLeft, 0, 0, 0, 0); setBlock(shadeRight, 0, 0, 0, 0); setBlock(shadeBottom, 0, 0, 0, 0);
   };
   const applyShades = rect => {
@@ -263,7 +271,12 @@ function enterRegionSelectMode(profile) {
   };
   const renderSaved = () => {
     savedLayer.innerHTML = '';
-    regions.forEach((rect, index) => {
+    regions.forEach((region, index) => {
+      const anchor = region.controls[0];
+      if (anchor && (!anchor.isConnected || !visibleRegionControlRect(anchor))) return;
+      const bounds = anchor?.getBoundingClientRect();
+      const rect = { ...region, left: region.left + (bounds ? bounds.left - region.anchorLeft : 0),
+        top: region.top + (bounds ? bounds.top - region.anchorTop : 0) };
       const box = mk('job-autofill-region-rect yanyu-region-saved');
       box.style.display = 'block';
       setBlock(box, rect.left, rect.top, rect.width, rect.height);
@@ -307,6 +320,11 @@ function enterRegionSelectMode(profile) {
     const additive = start.additive || event.ctrlKey || event.metaKey;
     resetDrag();
     if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < REGION_MIN_DRAG_PX) return;
+    // Remember the actual fields at release. A later scroll can put a different row under this rectangle.
+    rect.controls = listSmartFillFields().filter(el => regionControlOverlapRatio(visibleRegionControlRect(el), rect) > REGION_OVERLAP_RATIO);
+    const anchor = rect.controls[0]?.getBoundingClientRect();
+    rect.anchorLeft = anchor?.left;
+    rect.anchorTop = anchor?.top;
     if (additive) {
       regions.push(rect);
       renderSaved();
@@ -316,6 +334,22 @@ function enterRegionSelectMode(profile) {
     finishRegionSelect(null, regions.slice());
   };
   const onPointerCancel = () => resetDrag();
+  const onScroll = () => {
+    if (dragStart) resetDrag();
+    if (regions.length) renderSaved();
+  };
+  root.addEventListener('wheel', event => {
+    if (event.ctrlKey) return;
+    const under = document.elementsFromPoint(event.clientX, event.clientY).find(el => !root.contains(el));
+    for (let el = under; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (!/^(auto|scroll|overlay)$/.test(getComputedStyle(el).overflowY) || el.scrollHeight <= el.clientHeight) continue;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? el.clientHeight : 1;
+      const before = el.scrollTop;
+      el.scrollTop += event.deltaY * unit;
+      if (el.scrollTop !== before) { event.preventDefault(); return; }
+    }
+  }, { passive: false });
+  document.addEventListener('scroll', onScroll, true);
   const onContextMenu = event => { event.preventDefault(); resetDrag(); };
   const onKeyDown = event => {
     if (event.key !== 'Escape') return;
@@ -331,7 +365,7 @@ function enterRegionSelectMode(profile) {
   window.addEventListener('pointercancel', onPointerCancel);
   regionFillState = {
     phase: 'select', profile, root, panel: null, refs: [], skippedHasValue: 0,
-    onKeyDown, onWindowPointerUp: onPointerUp, onWindowPointerCancel: onPointerCancel,
+    onKeyDown, onScroll, onWindowPointerUp: onPointerUp, onWindowPointerCancel: onPointerCancel,
     urlTimer: null, lastHref: String(location.href), regions
   };
   shadeFull();
@@ -350,7 +384,11 @@ function finishRegionSelect(selRect, allRegions) {
   if (state.root?.parentElement) state.root.parentElement.removeChild(state.root);
   state.root = null;
   state.phase = 'panel';
-  const collected = collectYanyuRegionFields(regions);
+  if (state.onScroll) document.removeEventListener('scroll', state.onScroll, true);
+  state.afterSelection?.();
+  state.afterSelection = null;
+  const selected = regions.every(region => region.controls) ? new Set(regions.flatMap(region => region.controls)) : null;
+  const collected = collectYanyuRegionFields(regions, selected);
   state.refs = collected.refs;
   state.skippedHasValue = collected.skippedHasValue;
   if (!collected.refs.length) {
@@ -365,6 +403,13 @@ function finishRegionSelect(selRect, allRegions) {
 function showRegionEntryPanel() {
   const state = regionFillState;
   if (!state) return;
+  if (contentMainState.sidePanelPorts?.size) {
+    state.panelToken ||= Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-');
+    publishSidePanel({ kind: 'regionSelection', selection: {
+      token: state.panelToken, fields: state.refs.length, categories: regionPanelCategories(state.profile)
+    } });
+    return;
+  }
   if (!yanyuDockState.host && typeof createFloatingButton === 'function') createFloatingButton();
   const host = yanyuDockState.host;
   const shadow = yanyuDockState.shadow;
@@ -427,22 +472,26 @@ function showRegionEntryPanel() {
   applyBtn.onclick = () => {
     if (!regionFillState || regionFillState !== state || !state.selection) return;
     const { category, idx } = state.selection;
-    const entry = regionCategoryEntries(state.profile, category)[idx];
-    if (!entry) return;
-    // 沿用 runRegionFill 的 regionFillRunning 锁；这里先禁用按钮，快速连点也只执行一次。
     applyBtn.disabled = true;
-    const refs = state.refs;
-    const skipped = state.skippedHasValue;
-    exitRegionFillMode();
-    void runRegionFill(refs, skipped, category, entry).then(result => {
-      if (result) publishSidePanel({ kind: 'regionResult', count: result.filled, profileId: state.profile.id });
-    }).catch(error => {
-      showNotification(error?.name === 'AbortError' ? '选区填入已取消' : '选区填入未能完成', 'warning');
-    });
+    applySelectedRegionEntry(state, category, idx);
   };
 
   if (!yanyuShowRegionView()) {
     exitRegionFillMode();
     showNotification('选区资料面板显示失败，请刷新后重试', 'warning');
   }
+}
+
+function applySelectedRegionEntry(state, category, idx) {
+  if (regionFillState !== state || state.phase !== 'panel' || state.lastHref !== location.href ||
+      !REGION_CATEGORY_META.some(item => item.key === category) || !Number.isInteger(idx)) return false;
+  const entry = regionCategoryEntries(state.profile, category)[idx];
+  if (!entry) return false;
+  exitRegionFillMode();
+  void runRegionFill(state.refs, state.skippedHasValue, category, entry).then(result => {
+    if (result) publishSidePanel({ kind: 'regionResult', count: result.filled, profileId: state.profile.id });
+  }).catch(error => {
+    showNotification(error?.name === 'AbortError' ? '选区填入已取消' : '选区填入未能完成', 'warning');
+  });
+  return true;
 }

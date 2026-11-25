@@ -264,6 +264,7 @@ var  copyPayloads = [];
 
 // —— 点选填入：追踪网页上最后聚焦的可填控件，点资料条目即写入 ——
 var lastFillTarget = null;
+var QUICK_FIELD_SHELL = '.ant-select, .ant-picker, .ant-input-affix-wrapper, .el-select, .el-date-editor, .phoenix-select';
 
 // 解析候选填入目标：input/textarea/select（过安全过滤），或组件下拉触发器（div 等）。
 // 密码/验证码/文件/提交类与抽屉/Dock 自身元素永不成为目标；返回目标信息或 null。
@@ -287,7 +288,7 @@ function resolveFillTarget(el) {
     kind = 'field';
     kindName = '文本域';
   } else if (tag === 'INPUT' && (['date', 'month'].includes(el.type) ||
-      (el.closest('.el-date-editor') && isSmartFillWritableInnerInput(el)))) {
+      ((el.closest('.el-date-editor, .ant-picker') || isBeisenDateInput(el)) && isSmartFillWritableInnerInput(el)))) {
     if (isIgnoredInput(el)) return null;
     kind = 'field';
     kindName = '日期';
@@ -447,14 +448,24 @@ if (!globalThis.__CAPYBARA_FILL_FOCUS_LISTENER_BOUND__) {
   const track = event => {
     const connected = globalThis.__CAPYBARA_CONTENT_MAIN_STATE__?.sidePanelPorts?.size;
     if (connected && activeFillTask?.running) return;
-    if (setFillTargetFromElement(event.target)) return;
-    if (connected && event.target.matches?.('input, textarea, select, [contenteditable], [role="combobox"]')) {
+    let field = event.target;
+    if (field.closest?.('.constant-main-selector-container, .phoenix-selectList')) return;
+    const shell = field.closest?.(QUICK_FIELD_SHELL);
+    if (shell && !field.matches('input, textarea, select')) {
+      const inputs = [...shell.querySelectorAll('input:not([type="hidden"]), textarea, select')];
+      // Range pickers have two independent inputs. An unlabelled outer edge
+      // cannot identify which endpoint the user wants to write.
+      field = inputs.length === 1 ? inputs[0] : inputs.length ? null : shell.querySelector('[role="combobox"]') || shell;
+    }
+    if (field && setFillTargetFromElement(field)) return;
+    if (connected && (shell || field?.matches?.('input, textarea, select, [contenteditable], [role="combobox"]'))) {
       lastFillTarget = null;
       publishSidePanelTarget();
     }
   };
   document.addEventListener('focusin', track, true);
-  document.addEventListener('click', event => { if (event.isTrusted) track(event); }, true);
+  document.addEventListener('pointerdown', event => { if (event.isTrusted && event.button === 0) track(event); }, true);
+  document.addEventListener('click', event => { if (event.isTrusted && event.detail === 0) track(event); }, true);
 }
 
 function renderCopyRows(container, items) {

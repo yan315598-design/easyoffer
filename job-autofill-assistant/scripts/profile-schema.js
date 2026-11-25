@@ -65,13 +65,26 @@ function extendedDefaults(section) {
   return Object.fromEntries(Object.keys(profileSchema[section] || {}).map(key => [key, key === 'programmingLanguages' ? [] : '']));
 }
 
+function politicalMembership(value) {
+  const status = String(value || '').replace(/\s+/g, '');
+  if (/^(?:中共|中国共产党|共产)?预备党员$/.test(status)) return '中共预备党员';
+  if (/^(?:中共|中国共产党|共产)?党员$/.test(status)) return '中共党员';
+  if (/^(?:(?:中国)?共青团(?:团员|员)?|(?:中国)?共产主义青年团(?:团员)?|团员)$/.test(status)) return '共青团员';
+  return '';
+}
+
+function membershipDateKey(value) {
+  const status = politicalMembership(value);
+  return status === '共青团员' ? 'leagueJoinDate' : status ? 'partyJoinDate' : '';
+}
+
 var LANGUAGE_EXAMS = {
-  cet4: { name: 'CET-4', label: '四级', match: /^(?:大学英语四级|英语四级|四级|cet[-\s]?4)$/i },
-  cet6: { name: 'CET-6', label: '六级', match: /^(?:大学英语六级|英语六级|六级|cet[-\s]?6)$/i },
+  cet4: { name: 'CET-4', label: '四级', match: /^(?:(?:全国)?大学英语四级(?:考试)?|英语四级|四级|cet[-\s]?4)$/i },
+  cet6: { name: 'CET-6', label: '六级', match: /^(?:(?:全国)?大学英语六级(?:考试)?|英语六级|六级|cet[-\s]?6)$/i },
   ielts: { name: 'IELTS', label: '雅思', match: /^(?:雅思|ielts)$/i },
   toefl: { name: 'TOEFL', label: '托福', match: /^(?:托福|toefl)$/i },
-  tem4: { name: 'TEM-4', label: '专四', match: /^(?:英语专业四级|专四|tem[-\s]?4)$/i },
-  tem8: { name: 'TEM-8', label: '专八', match: /^(?:英语专业八级|专八|tem[-\s]?8)$/i },
+  tem4: { name: 'TEM-4', label: '专四', match: /^(?:(?:英语专业|专业英语)四级(?:考试)?|专四|tem[-\s]?4)$/i },
+  tem8: { name: 'TEM-8', label: '专八', match: /^(?:(?:英语专业|专业英语)八级(?:考试)?|专八|tem[-\s]?8)$/i },
   gre: { name: 'GRE', label: 'GRE', match: /^gre$/i },
   gmat: { name: 'GMAT', label: 'GMAT', match: /^gmat$/i }
 };

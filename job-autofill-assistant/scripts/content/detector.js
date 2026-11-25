@@ -302,6 +302,9 @@ function detectField(element) {
     ? features.placeholder : (features.label || features.placeholder));
   const section = features.section;
   const rawLabel = String(features.label || '').trim();
+  if (rawLabel === '加入党派时间' && element.closest('.form-item--phoenix')) {
+    return finish(membershipDateKey(beisenPartyStatus(element.closest('.ux-standard-form'))), 'extendedExact');
+  }
   const tableField = duoyiTableField(element);
   if (tableField) return finish(tableField.type, 'sectionAlias');
   const tecItem = element.closest('.tec-form-item');

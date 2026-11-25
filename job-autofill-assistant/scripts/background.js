@@ -46,6 +46,15 @@ if (!ACTION_HAS_DEFAULT_POPUP) {
   chrome.action.onClicked.addListener(async (clickedTab) => {
     if (await nativePanelBehavior) return;
     const tabId = clickedTab && Number.isInteger(clickedTab.id) ? clickedTab.id : null;
+    if (ACTION_MANIFEST.side_panel && chrome.sidePanel?.open && tabId !== null) {
+      try {
+        await chrome.sidePanel.open({ tabId });
+        clearActionFailure(tabId);
+      } catch (error) {
+        showActionFailure(tabId, error.message);
+      }
+      return;
+    }
     if (tabId !== null) {
       startActionClick(clickedTab, tabId);
       return;

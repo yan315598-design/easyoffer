@@ -29,6 +29,9 @@ body { font-size: 14px; }
 .sidebar-page-actions { display: grid; min-width: 0; gap: var(--yy-space-2); border: 0; }
 .actions-row .btn { min-width: max-content; }
 .sidebar-quick { padding: 14px; box-shadow: none; }
+#regionChoice { display: grid; gap: 8px; }
+#regionChoice p { margin: 0; }
+#regionEntry { width: 100%; min-width: 0; padding: 6px; font: inherit; color: inherit; background: var(--yy-bg); }
 .sidebar-target {
   display: grid;
   gap: 3px;
@@ -112,7 +115,10 @@ body { font-size: 14px; }
 .sidebar-preview li { margin: 5px 0; white-space: pre-wrap; }
 .sidebar-preview form { display: flex; justify-content: end; gap: 6px; }
 .sidebar-preview button[value="write"] { background: var(--yy-primary-soft); color: var(--yy-primary-text); font-weight: 700; }
-.sidebar-task-controls { display: flex; gap: 8px; }
+.sidebar-task-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.sidebar-task-progress { flex-basis: 100%; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.sidebar-task-progress progress { display: block; width: 100%; height: 6px; margin-top: 6px; accent-color: var(--yy-primary-text); }
+.container[data-view="quick"] #sidebarUndo { display: none; }
 .sidebar-result {
   display: flex;
   align-items: center;
@@ -145,6 +151,9 @@ body { font-size: 14px; }
 .sidebar-views button[aria-pressed="true"] { background: var(--yy-primary-soft); border-color: var(--yy-primary-soft-border); color: var(--yy-primary-text); }
 .sidebar-command { position: static; }
 .container[data-view="fill"] .sidebar-quick { display: none; }
+.container[data-view="quick"] #taskFeedback { display: none; }
+#dismissTaskFeedback { margin-inline-start: auto; flex: none; width: 26px; height: 26px; border: 0; background: none; color: inherit; font: inherit; font-size: 18px; cursor: pointer; }
+.page-status .status-text { white-space: normal; }
 .container[data-view="quick"] .profile-card { padding: 9px 12px; }
 .container[data-view="quick"] .profile-card :is(.card-label, .completeness-block),
 .container[data-view="quick"] .actions > :not(.page-status) { display: none; }
@@ -173,5 +182,8 @@ body { font-size: 14px; }
 .sidebar-open-record:hover { text-decoration: underline; }
 @media (max-width: 320px) {
   .container { padding-inline: 10px; }
+  .profile-row, .profile-row .dropdown-trigger { gap: 3px; }
+  .profile-row .dropdown-trigger { padding-inline: 5px; }
+  .profile-row .icon-btn { width: 26px; flex-shrink: 0; }
   .sidebar-result { align-items: start; flex-direction: column; }
 }

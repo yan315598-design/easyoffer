@@ -138,6 +138,31 @@ function isXhsForm() {
   return !!document.querySelector('#form_item_name') && !!document.querySelector('#form_item_gender, #form_item_birthday, .ant-form-item .ant-select');
 }
 
+async function jumpAntCalendarYear(popup, year, options) {
+  const wait = test => waitFor(test, { timeoutMs: 200, signal: options.signal, task: options.task, observe: document.body });
+  const yearPanel = () => popup()?.querySelector('.ant-picker-year-panel');
+  if (!await clickFillControl(popup()?.querySelector('.ant-picker-year-btn'), options) || !await wait(yearPanel)) return false;
+  for (let step = 0; step < 18; step++) {
+    const panel = yearPanel();
+    const cells = [...(panel?.querySelectorAll('.ant-picker-cell-in-view:not(.ant-picker-cell-disabled)') || [])];
+    const years = cells.map(cell => Number.parseInt(cell.title || cell.textContent, 10));
+    if (!years.length || years.some(n => !Number.isFinite(n))) return false;
+    const cell = cells[years.indexOf(year)];
+    if (cell) {
+      if (!await clickFillControl(cell.querySelector('.ant-picker-cell-inner') || cell, options)) return false;
+      return !!await wait(() => !yearPanel());
+    }
+    const direction = year < Math.min(...years) ? 'prev' : year > Math.max(...years) ? 'next' : '';
+    const arrow = direction && panel.querySelector(`.ant-picker-header-super-${direction}-btn`);
+    if (!arrow || !await clickFillControl(arrow, options)) return false;
+    if (!await wait(() => {
+      const first = yearPanel()?.querySelector('.ant-picker-cell-in-view');
+      return first && Number.parseInt(first.title || first.textContent, 10) !== years[0];
+    })) return false;
+  }
+  return false;
+}
+
 async function fillAntCalendar(input, value, options = {}) {
   const picker = input.closest('.ant-picker');
   if (picker) {
@@ -161,6 +186,7 @@ async function fillAntCalendar(input, value, options = {}) {
     const target = monthPanel ? normalized.slice(0, 7) : normalized;
     if (!monthPanel && /^\d{4}-\d{2}$/.test(target)) markManual(input, '请确认具体日期');
     let picked = false;
+    let triedYearPanel = false;
     if (monthPanel || /^\d{4}-\d{2}-\d{2}$/.test(target)) {
       for (let step = 0; step < 120; step++) {
         await waitForFillCheckpoint(options.task);
@@ -176,6 +202,22 @@ async function fillAntCalendar(input, value, options = {}) {
         const month = calendarMonth();
         if (!year) break;
         const targetYear = Number(target.slice(0, 4)), targetMonth = Number(target.slice(5, 7));
+        if (!triedYearPanel && Math.abs(targetYear - year) > 2) {
+          triedYearPanel = true;
+          if (await jumpAntCalendarYear(popup, targetYear, options)) {
+            // A day picker may expose the month grid after the user selects a year.
+            if (!monthPanel) {
+              const monthGrid = popup()?.querySelector('.ant-picker-month-panel');
+              if (monthGrid) {
+                const monthCell = monthGrid.querySelector(`td[title="${target.slice(0, 7)}"]:not(.ant-picker-cell-disabled)`);
+                if (!await clickFillControl(monthCell?.querySelector('.ant-picker-cell-inner') || monthCell, options)) break;
+                await waitFor(() => popup()?.querySelector('.ant-picker-date-panel'), { timeoutMs: 200, signal: options.signal, task: options.task });
+              }
+            }
+            continue;
+          }
+          if (popup()?.querySelector('.ant-picker-year-panel')) break;
+        }
         const direction = year !== targetYear ? (targetYear < year ? 'super-prev' : 'super-next')
           : (!monthPanel && month ? (targetMonth < month ? 'prev' : 'next') : '');
         if (!direction) break;
@@ -219,126 +261,188 @@ async function fillAntDateRange(fields, values, options) {
 
 async function fillXhsControl(input, value, options) {
   if (input.closest('.ant-picker')) return fillAntCalendar(input, value, options);
-  const select = input.closest('.ant-select');
-  if (!select || select.classList.contains('ant-select-auto-complete')) {
+  if (input.closest('.ant-select-auto-complete') && !input.readOnly && !input.disabled) {
     const ok = setValue(input, value);
     input.blur();
-    await sleep(80);
-    return ok && input.value === String(value);
+    await Promise.resolve();
+    return ok && input.value === String(value) && input.getAttribute('aria-invalid') !== 'true';
   }
-  document.activeElement?.blur();
-  document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-  document.body.click();
-  await sleep(150);
-  select.querySelector('.ant-select-selector').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}));
-  let hit;
-  for (let step = 0; step < 10 && !hit; step++) {
-    await sleep(100);
-    hit = [...document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')]
-      .find(el => isElementTrulyVisible(el) && !/leave|hidden/.test(el.closest('.ant-select-dropdown')?.className || '') && !el.classList.contains('ant-select-item-option-disabled') && optionTextEquals(el.textContent, value));
-  }
-  if (hit) hit.click();
-  document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-  input.blur();
-  await sleep(100);
-  return !!hit && optionTextEquals(select.querySelector('.ant-select-selection-item')?.textContent, value);
+  return fillField(input, value, options);
 }
 
-async function fillXhsForm(profile, options) {
-  const incremental = options?.mode === 'incremental';
-  const items = () => [...document.querySelectorAll('.ant-form-item')];
-  const label = item => item.querySelector('.ant-form-item-label')?.textContent.trim();
-  const byLabel = name => items().filter(item => label(item) === name);
-  // incremental 模式不新增经历条目，只补当前已有控件的空白
-  if (!incremental) {
-    for (const [field, buttonText, entries] of [
-      ['学校', '添加教育经历', profile.education || []],
-      ['公司', '添加实习经历', profile.workExperience || []],
-      ['竞赛/奖项名称', '添加竞赛/奖项', profile.awards || []],
-      ['论文名称', '添加论文', profile.papers || []],
-      ['专利名称', '添加专利', profile.patents || []],
-      ['证书名称', '添加证书', (profile.certificates || []).filter(p => p.name)]
-    ]) {
-      while (byLabel(field).length < entries.length) {
-        await waitForFillCheckpoint(options?.task);
-        const button = [...document.querySelectorAll('button,span')].find(el => el.textContent.trim() === buttonText && isElementTrulyVisible(el));
-        if (!button) break;
-        const count = byLabel(field).length;
+var XHS_SECTIONS = {
+  education: ['学校', 'school', '添加教育经历'],
+  workExperience: ['公司', 'company', '添加实习经历'],
+  projects: ['项目名称', 'name', '添加项目经历'],
+  awards: ['竞赛/奖项名称', 'name', '添加竞赛/奖项'],
+  papers: ['论文名称', 'name', '添加论文'],
+  patents: ['专利名称', 'name', '添加专利'],
+  certificates: ['证书名称', 'name', '添加证书']
+};
+
+function xhsLabel(item) {
+  return cleanLabel(item.querySelector('.ant-form-item-label')?.textContent).replace(/[:：]$/, '').trim();
+}
+
+function xhsRecord(input) {
+  const match = input?.id.match(/resume(Education|Employment|Project|Award|Competition|Paper|Patent|Certificate)(?:Experience)?Info_(\d+)_/i);
+  if (match) {
+    const section = {education:'education', employment:'workExperience', project:'projects', award:'awards',
+      competition:'awards', paper:'papers', patent:'patents', certificate:'certificates'}[match[1].toLowerCase()];
+    return { section, key: Number(match[2]) };
+  }
+  const card = input?.closest('.rounded-md');
+  if (!card) return null;
+  const labels = [...card.querySelectorAll('.ant-form-item')].filter(item => item.closest('.rounded-md') === card).map(xhsLabel);
+  const section = Object.keys(XHS_SECTIONS).find(key => labels.includes(XHS_SECTIONS[key][0]));
+  return section ? { section, key: card } : null;
+}
+
+function xhsBindings(items, profile) {
+  const records = new Map();
+  const rowsBySection = {};
+  for (const item of items) {
+    const input = item.querySelector('input,textarea,select');
+    const record = xhsRecord(input);
+    if (!record) continue;
+    // Prefer the same card key for its indexed and unindexed controls.
+    const card = input.closest('.rounded-md');
+    if (card && [...card.querySelectorAll('.ant-form-item')].filter(i => xhsLabel(i) === XHS_SECTIONS[record.section][0]).length === 1) record.key = card;
+    const rows = rowsBySection[record.section] ||= new Map();
+    if (!rows.has(record.key)) rows.set(record.key, {section: record.section, identity: ''});
+    const row = rows.get(record.key);
+    if (xhsLabel(item) === XHS_SECTIONS[record.section][0]) {
+      row.identity = (widgetSelectCurrentValue(input) || input.value || '').trim();
+    }
+    records.set(item, row);
+  }
+  for (const [section, rows] of Object.entries(rowsBySection)) {
+    const entries = profile[section] || [];
+    const used = new Set();
+    for (const row of rows.values()) {
+      if (!row.identity) continue;
+      const key = XHS_SECTIONS[section][1];
+      const matches = entries.filter(entry => String(entry?.[key] || '').trim() === row.identity);
+      if (matches.length === 1 && !used.has(matches[0])) { row.entry = matches[0]; used.add(row.entry); }
+    }
+    const remaining = entries.filter(entry => !used.has(entry));
+    for (const row of rows.values()) if (!row.identity) row.entry = remaining.shift();
+  }
+  return records;
+}
+
+function siteFieldClaim(options, input, label) {
+  options.attemptedFields?.add(input);
+  options.onField?.(input, label);
+}
+
+async function fillXhsForm(profile, options = {}) {
+  const items = () => [...document.querySelectorAll('.ant-form-item')].filter(isElementTrulyVisible);
+  if (options.mode !== 'incremental' || options.completeRows) {
+    for (const [section, [anchor, , buttonText]] of Object.entries(XHS_SECTIONS)) {
+      const n = (profile[section] || []).filter(entry => typeof entry === 'object' && entry && Object.keys(entry).some(key => key !== 'id' && entry[key])).length;
+      const count = () => items().filter(item => xhsLabel(item) === anchor).length;
+      for (let current = count(); current < n; current = count()) {
+        await waitForFillCheckpoint(options.task);
+        const button = [...document.querySelectorAll('button,span')].find(el => el.textContent.trim().replace(/^[+＋]\s*/, '') === buttonText && isElementTrulyVisible(el));
+        if (!button || button.closest('[disabled],[aria-disabled="true"]')) break;
         button.click();
-        for (let step = 0; step < 10 && byLabel(field).length === count; step++) await sleep(100);
-        if (byLabel(field).length === count) break;
+        if (!await waitFor(() => count() > current, { timeoutMs: 1000, task: options.task, signal: options.signal, observe: document.body })) break;
       }
     }
   }
-  let filledCount = 0;
-  const manualFields = [];
-  const fieldResults = [];
-  const occurrences = {};
+  const fields = items();
+  const records = xhsBindings(fields, profile);
+  const basic = profile.basicInfo || {};
+  const documentType = basic.idCardType || (/^(?:\d{15}|\d{17}[\dXx])$/.test(basic.idCard || '') ? '身份证' : '');
   const intro = profile.introTemplates?.default || '';
-  const githubStars = [...intro.matchAll(/(\d+)\s*Stars\b/gi)].map(m => Number(m[1]));
-  const githubLinks = [...new Set([profile.basicInfo?.github, ...(profile.projects || []).map(p => p.projectUrl),
+  const stars = [...intro.matchAll(/(\d+)\s*Stars\b/gi)].map(m => Number(m[1]));
+  const githubLinks = [...new Set([basic.github, ...(profile.projects || []).map(p => p.projectUrl),
     ...(intro.match(/https:\/\/github\.com\/[A-Za-z0-9_.\/-]+/g) || [])].filter(Boolean))];
-  for (const item of items()) {
-    await waitForFillCheckpoint(options?.task);
-    const name = label(item);
-    const index = occurrences[name] || 0;
-    occurrences[name] = index + 1;
-    const inputs = [...item.querySelectorAll('input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),textarea')];
-    const input = inputs[0];
-    if (!input) continue;
-    const eduIndex = input.id.match(/resumeEducationInfo_(\d+)_/)?.[1];
-    const workIndex = input.id.match(/resumeEmploymentInfo_(\d+)_/)?.[1];
-    const edu = profile.education?.[eduIndex] || {};
-    const work = profile.workExperience?.[workIndex] || {};
-    const rankPercent = Number((edu.rank || '').match(/前\s*(\d+(?:\.\d+)?)\s*%/)?.[1]);
-    const rankBucket = rankPercent > 0 && [5, 10, 20, 25, 50].find(n => rankPercent <= n);
+  const basics = { '姓名': basic.fullName, '邮箱': basic.email, '性别': basic.gender, '出生年月': basic.birthDate,
+    '出生日期': basic.birthDate, '手机号': basic.phone, '手机号码': basic.phone, '意向工作城市': profile.jobIntention?.expectedCity,
+    'github 链接': profile.openSource?.map(p => p.url).filter(Boolean).join('\n') || githubLinks.join('\n'),
+    'github 星级': profile.openSource?.[0]?.stars ?? (stars.length ? Math.max(...stars) : '') };
+  const fieldResults = [], manualFields = [];
+  let filledCount = 0;
+  for (const item of fields) {
+    await waitForFillCheckpoint(options.task);
+    const label = xhsLabel(item);
+    const inputs = [...item.querySelectorAll('input:not([type="file"]):not([type="checkbox"]):not([type="hidden"]),textarea,select')]
+      .filter(el => el.closest('.ant-form-item') === item && !isIgnoredInput(el));
+    if (!inputs.length) continue;
+    const record = records.get(item);
+    const entry = record?.entry || {};
+    const section = record?.section;
+    const range = label === '起止时间' && ['education', 'projects', 'workExperience'].includes(section);
+    const doc = !section && /^证件号码?(?:[（(].*?[）)])?$/.test(label);
+    const typeInput = doc && inputs.find(el => el.tagName === 'SELECT' || el.closest('.ant-select'));
+    const numberInput = doc && inputs.find(el => el !== typeInput && !el.closest('.ant-select'));
     let values;
-    if (eduIndex !== undefined) values = ({
-      '起止时间': [edu.startDate, edu.endDate], '学校': [edu.school], '专业': [edu.major], '院系': [edu.college],
-      '学历': [({硕士:'硕士研究生',博士:'博士研究生'})[edu.degree] || edu.degree], '成绩排名': [rankBucket ? `TOP${rankBucket}%` : edu.rank]
-    })[name];
-    else if (workIndex !== undefined) values = ({
-      '起止时间': [work.startDate, work.endDate], '公司': [work.company], '部门': [work.department],
-      '职位': [work.position], '工作性质': [work.workType], '工作描述': [[work.description, work.achievements].filter(Boolean).join('\n')]
-    })[name];
-    else values = ({
-      '姓名': [profile.basicInfo?.fullName], '邮箱': [profile.basicInfo?.email],
-      'Github 链接': [(profile.openSource?.map(p => p.url).filter(Boolean).join('\n')) || githubLinks.join('\n')],
-      'Github 星级': [profile.openSource?.[0]?.stars || (githubStars.length ? String(Math.max(...githubStars)) : '')],
-      '竞赛/奖项名称': [profile.awards?.[index]?.name]
-    })[name];
+    if (range) values = [entry.startDate, entry.endDate];
+    else if (doc) values = inputs.map(el => el === typeInput ? documentType : el === numberInput ? basic.idCard : undefined);
+    else if (section) {
+      const rankPercent = Number(String(entry.rank || '').match(/^(?:专业)?(?:排名)?(?:前|TOP)\s*(\d+(?:\.\d+)?)\s*%$/i)?.[1]);
+      const bucket = rankPercent > 0 && [5, 10, 20, 25, 50].find(n => rankPercent <= n);
+      const siteKeys = {
+        education: { '学校': entry.school, '专业': entry.major, '院系': entry.college, '学历': ({硕士:'硕士研究生',博士:'博士研究生'})[entry.degree] || entry.degree,
+          '成绩排名': bucket ? 'TOP' + bucket + '%' : entry.rank, 'gpa': entry.gpa, '绩点': entry.gpa },
+        workExperience: { '公司': entry.company, '部门': entry.department, '职位': entry.position,
+          '工作性质': entry.workType, '工作描述': [entry.description, entry.achievements].filter(Boolean).join('\n') },
+        projects: { '项目名称': entry.name, '项目描述': entry.description, '项目职责': entry.responsibilities, '项目成果': entry.achievements,
+          '项目角色': entry.role, '项目链接': entry.projectUrl, '职责及业绩': [entry.responsibilities, entry.achievements].filter(Boolean).join('\n') },
+        awards: { '竞赛/奖项名称': entry.name, '获奖名次': entry.rank || entry.grade,
+          '获奖情况描述/链接': [entry.description, entry.url].filter(Boolean).join('\n') }
+      };
+      if (Object.hasOwn(siteKeys[section] || {}, label)) values = [siteKeys[section][label]];
+      else if (EXTENDED_MAPPINGS[section]?.[label] && EXTENDED_MAPPINGS[section][label] !== '__combined') values = [entry[EXTENDED_MAPPINGS[section][label]]];
+    } else if (Object.hasOwn(basics, label)) values = [basics[label]];
     if (!values) continue;
+    // Country prefixes and certificate types are separate controls from their adjacent text fields.
+    const phone = /^(手机号|手机号码)$/.test(label) && inputs.length > 1;
+    const targets = phone ? [inputs.find(el => el.tagName === 'INPUT' && !el.closest('.ant-select'))] : inputs;
+    if (phone) inputs.filter(el => el !== targets[0]).forEach(el => options.attemptedFields?.add(el));
+    const radios = inputs.filter(el => el.type === 'radio');
+    if (radios.length) radios.forEach(el => options.attemptedFields?.add(el));
+    let rangeWritten;
     for (let i = 0; i < values.length; i++) {
-      await waitForFillCheckpoint(options?.task);
-      const value = values[i], el = inputs[i];
-      if (!el || !value || fieldHasValue(el)) continue;
-      // 单字段异常/失败结构化落账，不影响后续字段
+      const input = targets[i], value = values[i];
+      if (!input) continue;
+      await waitForFillCheckpoint(options.task);
+      siteFieldClaim(options, input, label);
+      let status = 'needs_review', reason = 'no_profile_value', actual = value;
       try {
-        if (await fillXhsControl(el, value, options)) {
-          filledCount++;
-          el.style.backgroundColor = '#e8f5e9';
-          el.removeAttribute('data-job-autofill-manual');
-          fieldResults.push({ status: 'filled', fieldType: name, label: name, value });
-        } else {
-          const note = `${name}：${value}`;
-          el.setAttribute('data-job-autofill-manual', note);
-          el.title = `请手动选择 ${note}`;
-          manualFields.push(note);
-          fieldResults.push({ status: 'needs_review', fieldType: name, label: name, value, reason: 'xhs_control_mismatch' });
+        if (rangeWritten === true) { status = 'filled'; reason = ''; filledCount++; }
+        else if (fieldHasValue(input)) { status = 'skipped_has_value'; reason = ''; }
+        else if (value != null && String(value).trim()) {
+          let ok = false;
+          if (doc && input === numberInput && typeInput &&
+              !fieldOptionEquals('证件类型', typeInput.tagName === 'SELECT' ? typeInput.selectedOptions[0]?.text : widgetSelectCurrentValue(typeInput), documentType)) {
+            reason = 'document_type_mismatch';
+          } else {
+            if (range && inputs.length === 2 && inputs[0].closest('.ant-picker-range')?.contains(inputs[1])) {
+              rangeWritten ??= await fillAntDateRange(inputs, values, options);
+              ok = rangeWritten;
+            } else if (label === '意向工作城市' && isSelectWidget(input)) {
+              const cities = String(value).split(/[、，,;；/／|]/).map(city => city.trim()).filter(Boolean);
+              for (const city of cities) {
+                if (await fillXhsControl(input, city, options)) { ok = true; actual = city; break; }
+              }
+            } else ok = await fillXhsControl(input, value, options);
+            reason = ok ? '' : 'xhs_control_mismatch';
+          }
+          if (ok) { status = 'filled'; filledCount++; clearManualHint(input); input.style.backgroundColor = '#e8f5e9'; }
+          else { const note = label + '：' + (doc ? '请核对证件类型和号码' : value); manualFields.push(note); markManual(input, note); }
         }
       } catch (err) {
         if (err?.name === 'AbortError') throw err;
-        const note = `${name}：（填充异常 ${err?.message || err}）`;
-        el.setAttribute('data-job-autofill-manual', note);
-        manualFields.push(note);
-        fieldResults.push({ status: 'failed', fieldType: name, label: name, value, reason: err?.message || String(err) });
+        status = 'failed'; reason = err?.message || String(err);
+        manualFields.push(label); markManual(input, label);
       }
+      fieldResults.push({ ...fillResultEntry(input, { fieldType: label }, status, reason, actual), label });
     }
   }
-  filledCount += await fillExtendedFields(profile, options);
-  if (!incremental) await handleResumeUpload(profile);
-  showNotification(`已填充 ${filledCount} 个字段` + (manualFields.length ? `；请手动选择：${manualFields.join('、')}` : '；未知资料请自行补充'), 'warning');
-  return {filledCount, manualFields, results: [], fieldResults, isForm: true};
+  return { filledCount, manualFields, results: fieldResults, fieldResults, isForm: true };
 }
 
 function isBeisenForm() {
@@ -347,7 +451,7 @@ function isBeisenForm() {
 
 // 每个 ux-standard-form 是一段独立经历，不能用页面上同名字段的顺序推断归属。
 function beisenKind(form) {
-  const labels = [...form.querySelectorAll('.form-item__title')].map(el => el.textContent.trim());
+  const labels = [...form.querySelectorAll('.form-item--phoenix')].map(beisenLabel);
   if (labels.includes('文章名、书名')) return 'paper';
   if (labels.includes('论文名称')) return 'paper';
   if (labels.includes('专利名称')) return 'patent';
@@ -358,120 +462,749 @@ function beisenKind(form) {
   if (labels.includes('项目名称')) return 'project';
   if (labels.includes('奖项名称')) return 'award';
   if (labels.includes('电子邮箱')) return 'basic';
+  if (labels.includes('外语语种')) return 'language';
+  if (labels.includes('期望工作城市')) return 'intention';
   if (labels.includes('技能类别')) return 'skills';
   if (labels.includes('自我评价及求职目标')) return 'intro';
+  if (labels.includes('本人承诺') && labels.includes('填表人签名')) return 'attestation';
   return '';
 }
 
-async function fillBeisenSelect(input, value, options) {
-  const wrap = input.closest('.phoenix-select');
-  document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-  document.body.click();
-  await sleep(100);
-  input.focus();
-  wrap.click();
-  let hit;
-  for (let attempt = 0; attempt < 10 && !hit; attempt++) {
-    await sleep(100);
-    hit = [...document.querySelectorAll('.phoenix-selectList__listItem')].find(el =>
-      isElementTrulyVisible(el) && optionTextEquals(el.textContent, value) &&
-      !/disabled/i.test(el.className));
-  }
-  if (hit) hit.click();
-  document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
-  document.body.click();
-  input.blur();
-  await sleep(100);
-  return !!hit && optionTextEquals(wrap.querySelector('.phoenix-select__tipEle')?.textContent, value);
+function beisenLabel(item) {
+  return cleanLabel((item.querySelector('.form-item__text') || item.querySelector('.form-item__title'))?.textContent?.normalize('NFKC'));
 }
 
-async function fillBeisenForm(profile, options) {
-  const incremental = options?.mode === 'incremental';
-  const lists = {
-    education: profile.education || [], work: profile.workExperience || [],
-    project: profile.projects || [], award: profile.awards || [], family: profile.familyMembers || [],
-    paper: profile.papers || [], patent: profile.patents || [], certificate: profile.certificates || []
+function beisenPartyStatus(form) {
+  const field = [...(form?.querySelectorAll('.form-item--phoenix') || [])].find(item => /^(党派|政治面貌)$/.test(beisenLabel(item)));
+  if (!field) return null;
+  const widget = field.querySelector('.phoenix-select');
+  if (widget) return beisenSelectCurrentValue(widget);
+  const native = field.querySelector('select');
+  if (native) return native.value ? native.selectedOptions[0]?.text.trim() || '' : '';
+  const checked = field.querySelector('.phoenix-radio--checked,[aria-checked=true]');
+  if (checked) return checked.textContent.trim();
+  const radio = field.querySelector('input[type=radio]:checked');
+  return radio ? choiceCaption(radio) : field.querySelector('input:not([type=radio])')?.value || '';
+}
+
+var BEISEN_SECTIONS = { education: 'education', work: 'workExperience', project: 'projects',
+  family: 'familyMembers', award: 'awards', paper: 'papers', patent: 'patents', certificate: 'certificates', language: 'languageCertificates' };
+
+function beisenCertificateCategory(entry) {
+  if (entry?.category) return entry.category;
+  const name = String(entry?.name || '').normalize('NFKC').replace(/\s+/g, '');
+  if (/^(?:基金|证券|期货)从业(?:人员)?资格(?:考试)?(?:证书|证|合格证)?$/.test(name)) return '投资与财务';
+  if (/^(?:(?:全国)?计算机等级考试|计算机技术与软件专业技术资格|微软认证|思科认证|NCRE\b)/i.test(name) ||
+      /^(?:(?:WPS|MS)(?:Office)?)?计算机[一二三四]级(?:考试|证书)?(?:[-·(]?(?:WPS|MS)(?:Office)?\)?)?$/i.test(name)) return '信息技术';
+  return '';
+}
+
+function beisenLists(profile) {
+  const lists = Object.fromEntries(Object.entries(BEISEN_SECTIONS).map(([kind, key]) => [kind, profile[key] || []]));
+  lists.language = profileLanguageEntries(profile);
+  lists.certificate = lists.certificate.map(entry => typeof entry === 'string' ? { name: entry } : entry);
+  for (const kind of Object.keys(lists)) lists[kind] = lists[kind].filter(entry =>
+    entry && Object.entries(entry).some(([key, value]) => key !== 'id' && value != null && String(value).trim()));
+  return lists;
+}
+
+// The first field identifies a record. Additional fields distinguish entries with the same name.
+var BEISEN_ROW_KEYS = {
+  education: {学校:'school', 学院:'college', 院系:'college', 专业名称:'major', 学历:'degree', 开始时间:'startDate', 结束时间:'endDate'},
+  project: {项目名称:'name', 开始时间:'startDate', 结束时间:'endDate', 担当角色:'role'},
+  work: {单位名称:'company', 开始时间:'startDate', 结束时间:'endDate', 职位名称:'position', 所在部门:'department'},
+  family: {姓名:'name', 称谓:'relation', 出生日期:'birthDate'},
+  award: {奖项名称:'name', 获奖时间:'date', 颁奖单位:'issuer'},
+  certificate: {证书名称:'name', 获得时间:'date', 证书编号:'code', 颁发机构:'issuer', 颁发单位:'issuer', 具有资格证书:'category', 证书等级:'level'},
+  paper: {'文章名、书名':'name', 论文名称:'name', 日期:'date', '刊物、出版社':'publisher'},
+  patent: {专利名称:'name', 专利号:'code', 取得时间:'date'},
+  language: {外语语种:'language', 语言等级:'exam'}
+};
+
+function beisenRowValue(item) {
+  const picker = item.querySelector('.phoenix-select');
+  if (picker) return beisenSelectCurrentValue(picker);
+  const control = item.querySelector('input:not([type=hidden]), textarea, select');
+  if (control?.tagName === 'SELECT') return control.value ? control.selectedOptions[0]?.text.trim() || '' : '';
+  if (item.querySelector('.phoenix-radio')) {
+    const checked = item.querySelector('.phoenix-radio--checked,[aria-checked=true],.phoenix-radio input:checked');
+    return checked?.closest('.phoenix-radio')?.textContent.trim() || '';
+  }
+  if (control?.matches('[type=radio],[type=checkbox]')) return item.querySelector('input:checked')?.value || '';
+  return control?.value.trim() || '';
+}
+
+function beisenRecordText(value) {
+  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+}
+
+function beisenRecordDateEqual(a, b, monthOnly = false) {
+  const left = elementDateParts(a), right = elementDateParts(b);
+  if (!left?.[1] || !right?.[1]) return false;
+  return left[0] === right[0] && left[1] === right[1] && (monthOnly || !left[2] || !right[2] || left[2] === right[2]);
+}
+
+function beisenRecordFieldEqual(label, key, shown, entry) {
+  if (key === 'exam') return [entry.name, entry.level].some(value => fieldOptionEquals(label, shown, value));
+  if (key === 'degree') return fieldOptionEquals(label, shown, entry.degree);
+  if (key === 'category' && label === '具有资格证书') return beisenRecordText(shown) === beisenRecordText(beisenCertificateCategory(entry));
+  if (key === 'relation') return familyRelationKey(shown) === familyRelationKey(entry.relation);
+  if (/date$/i.test(key)) return beisenRecordDateEqual(shown, entry[key]);
+  return beisenRecordText(shown) === beisenRecordText(entry[key]);
+}
+
+function beisenQualifiedProjectTitle(left, right) {
+  const compact = text => text.replace(/\s/g, '');
+  const [title, qualified] = [left, right].map(beisenRecordText).sort((a, b) => compact(a).length - compact(b).length);
+  const whole = compact(title);
+  if (whole.length < 8 || compact(qualified).length <= whole.length) return false;
+  // A recorded project can include an event or series prefix. Require the whole title at a visible boundary.
+  for (const delimiter of qualified.matchAll(/[\s·•:：—–\-／/]+/g)) {
+    if (compact(qualified.slice(delimiter.index + delimiter[0].length)) === whole) return true;
+  }
+  return false;
+}
+
+function beisenRowPlan(kind, forms, entries) {
+  const keys = BEISEN_ROW_KEYS[kind];
+  const anchor = Object.values(keys)[0];
+  const assigned = new Map();
+  const candidates = new Map();
+  const unnamedFamily = new Set();
+  const interchangeable = new Map();
+  const represented = new Set();
+  const blanks = [];
+  for (const form of forms) {
+    const values = new Map(), formKeys = new Set();
+    for (const item of form.querySelectorAll('.form-item--phoenix')) {
+      const label = beisenLabel(item);
+      if (keys[label]) formKeys.add(keys[label]);
+      const value = beisenRowValue(item);
+      if (value) values.set(label, value);
+    }
+    if (!values.size) { blanks.push(form); continue; }
+    const fields = [...values].filter(([label]) => keys[label]);
+    const name = fields.find(([label]) => keys[label] === anchor)?.[1];
+    const exam = kind === 'language' && values.get('语言等级');
+    let matches = name ? entries.filter(entry => beisenRecordText(name) === beisenRecordText(entry[anchor])) : [];
+    if (kind === 'family' && !name && values.has('称谓') && elementDateParts(values.get('出生日期'))?.[2]) {
+      unnamedFamily.add(form);
+      matches = entries.filter(entry => elementDateParts(entry.birthDate)?.[2] &&
+        familyRelationKey(values.get('称谓')) === familyRelationKey(entry.relation) &&
+        beisenRecordDateEqual(values.get('出生日期'), entry.birthDate));
+    }
+    if (exam) matches = (name ? matches : entries).filter(entry => beisenRecordFieldEqual('语言等级', 'exam', exam, entry));
+    if (kind === 'project' && name && !matches.length) {
+      matches = entries.filter(entry => beisenQualifiedProjectTitle(name, entry.name) &&
+        beisenRecordDateEqual(values.get('开始时间'), entry.startDate, true));
+    }
+    if (matches.length > 1 && !unnamedFamily.has(form)) {
+      let narrowed = matches.filter(entry => fields.every(([label, shown]) =>
+        keys[label] === anchor || beisenRecordFieldEqual(label, keys[label], shown, entry)));
+      // Sites and resumes may record different major wording or graduation days for the same enrolment.
+      if (!narrowed.length && kind === 'education' && values.has('学历') && values.has('开始时间')) {
+        narrowed = matches.filter(entry => fieldOptionEquals('学历', values.get('学历'), entry.degree) &&
+          beisenRecordDateEqual(values.get('开始时间'), entry.startDate));
+      }
+      // Conflicting/incomplete details cannot establish which same-name records are missing.
+      if (narrowed.length) matches = narrowed;
+      else { matches.forEach(entry => represented.add(entry)); matches = []; }
+    }
+    if (kind === 'certificate' && matches.length > 1 &&
+        [...formKeys].every(key => matches.every(entry => beisenRecordText(entry[key]) === beisenRecordText(matches[0][key])))) {
+      // Two real certificates can have the same name, issuer and date but different serials.
+      // Count occupied slots; expose only values common to the candidates on these saved rows.
+      const signature = matches.map(entry => entries.indexOf(entry)).join(',');
+      if (!interchangeable.has(signature)) interchangeable.set(signature, { entries: matches, forms: [] });
+      interchangeable.get(signature).forms.push(form);
+      assigned.set(form, null);
+      continue;
+    }
+    candidates.set(form, matches);
+    matches.forEach(entry => represented.add(entry));
+    assigned.set(form, null);
+  }
+  const singleClaims = new Map();
+  for (const matches of candidates.values()) {
+    if (matches.length === 1) singleClaims.set(matches[0], (singleClaims.get(matches[0]) || 0) + 1);
+  }
+  for (const [form, matches] of candidates) {
+    if (unnamedFamily.has(form) && matches.length === 1 &&
+        [...candidates.values()].some(other => other !== matches && other.includes(matches[0]))) continue;
+    if (matches.length === 1 && singleClaims.get(matches[0]) === 1) assigned.set(form, matches[0]);
+  }
+  for (const group of interchangeable.values()) {
+    const available = group.entries.filter(entry => !represented.has(entry));
+    available.slice(0, group.forms.length).forEach(entry => represented.add(entry));
+    if (group.forms.length > available.length) continue;
+    const common = Object.fromEntries(Object.entries(group.entries[0]).filter(([key, value]) =>
+      key !== 'id' && group.entries.every(entry => entry[key] === value)));
+    for (const form of group.forms) assigned.set(form, common);
+  }
+  const remaining = entries.filter(entry => !represented.has(entry));
+  for (const form of blanks) assigned.set(form, remaining.shift());
+  return { assigned, missing: remaining.filter(entry => beisenRecordText(entry[anchor])) };
+}
+
+function beisenRowEntries(forms, lists) {
+  const assigned = new Map();
+  for (const [kind, entries] of Object.entries(lists)) {
+    const rows = forms.filter(form => beisenKind(form) === kind);
+    for (const [form, entry] of beisenRowPlan(kind, rows, entries).assigned) assigned.set(form, entry);
+  }
+  return assigned;
+}
+
+function beisenSelectCurrentValue(wrap) {
+  const chips = [...wrap.querySelectorAll('.phoenix-select__content > li:not(.phoenix-select__inputWrapper)')]
+    .map(chip => chip.textContent.trim()).filter(Boolean);
+  const value = chips.join('、') || wrap.querySelector('.phoenix-select__tipEle')?.textContent.trim() || '';
+  return SMART_FILL_PLACEHOLDER_OPTION_RE.test(value) ? '' : value;
+}
+
+// Keep the actual committed display and the original records in this isolated world only.
+// The site may rebuild every .ux-standard-form when it finishes parsing an attachment.
+var beisenResultProofs = globalThis.__easyofferBeisenProofs ||= new WeakMap();
+
+function beisenFormWitness(form) {
+  const kind = beisenKind(form);
+  const keys = BEISEN_ROW_KEYS[kind] || {};
+  const fields = new Map();
+  for (const item of form.querySelectorAll('.form-item--phoenix')) {
+    const label = beisenLabel(item);
+    if (fields.has(label)) fields.set(label, null);
+    else fields.set(label, item);
+  }
+  const values = new Map();
+  for (const [label, key] of Object.entries(keys)) {
+    const item = fields.get(label);
+    const value = item && beisenRowValue(item);
+    if (value) values.set(key, beisenRecordText(value));
+  }
+  return {form, kind, values, fields};
+}
+
+function beisenCaptureForms(forms, byForm) {
+  const sources = forms.map(beisenFormWitness);
+  for (const source of sources) {
+    source.peers = sources;
+    byForm.set(source.form, source);
+    for (const item of source.fields.values()) if (item) byForm.set(item, source);
+  }
+}
+
+function beisenCommittedResultValue(item, label) {
+  const multi = item.querySelector('select[multiple]');
+  if (multi) return [...multi.selectedOptions].map(option => option.value).sort().join('\u001f');
+  if (item.querySelector('input[type=checkbox]')) {
+    return [...item.querySelectorAll('input[type=checkbox]:checked')].map(el => choiceCaption(el) || el.value).sort().join('\u001f');
+  }
+  const text = beisenRowValue(item);
+  if (/(日期|年月|时间|生日)$/.test(label)) {
+    const parts = elementDateParts(text);
+    if (parts) return parts.join('-');
+  }
+  return text;
+}
+
+function beisenRememberResult(row, byForm, item = row.element?.closest?.('.form-item--phoenix')) {
+  if (!item) return row;
+  const form = byForm?.get(item)?.form || item.closest('.ux-standard-form');
+  if (!form) return row;
+  byForm ||= new WeakMap();
+  if (!byForm.has(form)) {
+    const forms = [...document.querySelectorAll('.ux-standard-form')];
+    if (!forms.includes(form)) forms.push(form);
+    beisenCaptureForms(forms, byForm);
+  }
+  const source = byForm.get(item) || byForm.get(form);
+  const label = beisenLabel(item);
+  const proof = {source, item, element: row.element, label, expected: null};
+  // A picker may remove its trigger, or the entire original field, on commit.
+  const observed = row.status === 'filled' && !beisenRowValue(item) && (!item.isConnected || !item.contains(row.element))
+    ? beisenCurrentItem(proof, {}) || item : item;
+  const value = beisenRowValue(observed);
+  const key = BEISEN_ROW_KEYS[source.kind]?.[label];
+  if (key && value && row.status === 'filled') source.values.set(key, beisenRecordText(value));
+  proof.expected = row.status === 'filled'
+    ? isBeisenPlainText(row.element) && row.value != null && !/(日期|年月|时间|生日)$/.test(label)
+      ? String(row.value).trim() : beisenCommittedResultValue(observed, label)
+    : null;
+  beisenResultProofs.set(row, proof);
+  return row;
+}
+
+function beisenSameRecordAnchor(source, target) {
+  if (source.kind !== target.kind) return false;
+  const keys = BEISEN_ROW_KEYS[source.kind];
+  if (!keys) return ['basic', 'intention', 'intro', 'skills'].includes(source.kind);
+  const anchor = Object.values(keys)[0];
+  const oldName = source.values.get(anchor), newName = target.values.get(anchor);
+  if (oldName && newName) return oldName === newName;
+  if (source.kind !== 'family') return false;
+  const oldBirth = source.values.get('birthDate'), newBirth = target.values.get('birthDate');
+  const relation = source.values.get('relation');
+  return !!(relation && target.values.get('relation') && elementDateParts(oldBirth)?.[2] && elementDateParts(newBirth)?.[2] &&
+    familyRelationKey(relation) === familyRelationKey(target.values.get('relation')) && beisenRecordDateEqual(oldBirth, newBirth));
+}
+
+function beisenCompatibleDetails(source, target) {
+  return [...source.values].every(([key, value]) => !target.values.has(key) || target.values.get(key) === value ||
+    /date$/i.test(key) && beisenRecordDateEqual(target.values.get(key), value));
+}
+
+function beisenCurrentItem(proof, cache) {
+  const {source, label, item} = proof;
+  cache.witnesses ||= new WeakMap();
+  const witness = form => {
+    if (!cache.witnesses.has(form)) cache.witnesses.set(form, beisenFormWitness(form));
+    return cache.witnesses.get(form);
   };
+  if (source.form.isConnected && source.form.contains(item) && beisenLabel(item) === label &&
+      item.contains(proof.element) && source.kind === witness(source.form).kind &&
+      beisenCompatibleDetails(source, witness(source.form))) return item;
+  if (!cache.forms) cache.forms = [...document.querySelectorAll('.ux-standard-form')].map(witness);
+  if (!cache.targets) cache.targets = new Map();
+  if (!cache.targets.has(source)) {
+    const candidates = cache.forms.filter(row => beisenSameRecordAnchor(source, row));
+    const peers = source.peers.filter(row => beisenSameRecordAnchor(row, source));
+    let target = null;
+    if (candidates.length === 1 && peers.length === 1) target = candidates[0];
+    else {
+      const matches = candidates.filter(row => beisenCompatibleDetails(source, row));
+      if (matches.length === 1 && peers.filter(row => beisenCompatibleDetails(row, matches[0])).length === 1) target = matches[0];
+    }
+    cache.targets.set(source, target);
+  }
+  const candidate = cache.targets.get(source)?.fields.get(label);
+  if (!candidate) return null;
+  const controls = [...candidate.querySelectorAll('input:not([type=hidden]):not([type=file]),textarea,select,.phoenix-select,.phoenix-radio')];
+  const singleGroup = controls.every(el => el.matches('.phoenix-radio,input[type=radio]'));
+  const topLevel = controls.filter(control => !controls.some(other => other !== control && other.contains(control)));
+  return controls.length && (singleGroup || topLevel.length === 1) ? candidate : null;
+}
+
+function beisenResultStatus(proof, item) {
+  if (!item) return 'control_replaced';
+  if (!proof.expected || beisenCommittedResultValue(item, proof.label) !== proof.expected) return 'value_reset';
+  const input = item.querySelector('input:not([type=hidden]),textarea,select');
+  if (item.querySelector('[aria-invalid=true]') || input?.validity?.valid === false ||
+      item.querySelector('.form-item__error')?.textContent.trim()) return 'validation_failed';
+  return '';
+}
+
+function beisenResultRank(row) {
+  if (row.status === 'filled') return 3;
+  if ((row.proof || beisenResultProofs.get(row))?.expected != null) return 2;
+  return row.status === 'skipped_has_value' ? 1 : 0;
+}
+
+async function scanBeisenVirtualList(panel, matches, options) {
+  const holder = panel.querySelector('.phoenix-selectList__virtualList-holder');
+  if (!holder?.clientHeight || holder.scrollHeight <= holder.clientHeight + 1) return matches();
+  const scroll = async top => {
+    if (Math.abs(top - holder.scrollTop) < 1) return;
+    holder.scrollTop = top;
+    // Virtual rows are recycled after scroll handlers run, on the next paint.
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 100);
+      requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timer); resolve(); }));
+    });
+  };
+  const initial = holder.scrollTop;
+  const position = row => Math.round(row.getBoundingClientRect().top - holder.getBoundingClientRect().top + holder.scrollTop);
+  let hit = null;
+  try {
+    await scroll(0);
+    for (let page = 0; page < 100; page++) {
+      await waitForFillCheckpoint(options.task);
+      if (options.signal?.aborted || !panel.isConnected) return [];
+      for (const row of matches()) {
+        const key = position(row);
+        if (hit && hit.key !== key) return [hit.row, row];
+        if (!hit) hit = { key, row, top: holder.scrollTop };
+      }
+      const last = holder.scrollHeight - holder.clientHeight;
+      if (holder.scrollTop >= last - 1) {
+        if (!hit) return [];
+        await scroll(hit.top);
+        return matches().filter(row => position(row) === hit.key);
+      }
+      const previous = holder.scrollTop;
+      await scroll(Math.min(last, previous + holder.clientHeight));
+      if (holder.scrollTop <= previous) return [];
+    }
+    return []; // An incomplete or unbounded list cannot prove a unique match.
+  } finally {
+    if (!hit && holder.isConnected) holder.scrollTop = initial;
+  }
+}
+
+async function fillBeisenSelect(input, value, options = {}) {
+  const wrap = input.closest('.phoenix-select');
+  if (!wrap || input.disabled || !input.isConnected) return false;
+  const label = getClosestLabelText(input);
+  const selected = () => fieldOptionEquals(label, beisenSelectCurrentValue(wrap), value);
+  if (selected()) return true;
+  const wait = test => waitFor(test, { timeoutMs: options.openTimeoutMs || 1100,
+    observe: document.body, signal: options.signal, task: options.task });
+  const panels = () => [...document.querySelectorAll('.phoenix-selectList, .constant-main-selector-container')]
+    .filter(isElementTrulyVisible);
+  const outside = () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  outside();
+  document.body.click();
+  const before = new Set(panels());
+  if (!await clickFillControl(wrap, options)) return false;
+  const panel = await wait(() => {
+    const ids = [input, wrap].flatMap(node => ['aria-controls', 'aria-owns'].flatMap(attr =>
+      (node.getAttribute(attr) || '').split(/\s+/).filter(Boolean)));
+    const candidates = panels().filter(node => ids.length
+      ? ids.some(id => { const link = document.getElementById(id); return link && (link.contains(node) || node.contains(link)); })
+      : wrap.contains(node) || !before.has(node));
+    return candidates.length === 1 && candidates[0];
+  });
+  if (!panel) {
+    outside();
+    document.body.click();
+    return false;
+  }
+  let triggerQuery = null;
+  try {
+    const constant = panel.matches('.constant-main-selector-container');
+    const rowSelector = constant ? '.left-container .list-item-container' : '.phoenix-selectList__listItem';
+    const rowText = node => (node.querySelector('.item-text-label, .phoenix-selectList__singleLabel') || node).textContent.trim();
+    const matches = () => {
+      const rows = [...panel.querySelectorAll(rowSelector)].filter(row => selectableDropdownOption(row) && !/disabled/i.test(row.className));
+      if (/^(?:语言|外语|英语)等级$/.test(label) && languageExamKey(value)) {
+        return rows.filter(row => fieldOptionEquals(label, rowText(row), value));
+      }
+      const exact = rows.filter(row => optionTextEquals(rowText(row), value));
+      return exact.length ? exact : rows.filter(row => fieldOptionEquals(label, rowText(row), value));
+    };
+    if (constant && !await wait(() => panel.querySelector('.select-data-num-limit')?.textContent.trim() === '1')) return false;
+    let found = matches();
+    const holder = panel.querySelector('.phoenix-selectList__virtualList-holder');
+    if (!found.length || holder && holder.scrollHeight > holder.clientHeight + 1) {
+      const search = panel.querySelector('.phoenix-search input') ||
+        (!constant && wrap.matches('.phoenix-select--editable') && wrap.querySelector('.phoenix-select__input:not(.phoenix-select__input--unText)'));
+      const exam = languageExamKey(value);
+      const searchTerm = { cet4: '四级', cet6: '六级', tem4: '四级', tem8: '八级' }[exam];
+      const terms = search && !search.readOnly && !search.disabled ? [...new Set([searchTerm, value].filter(Boolean))] : [null];
+      for (const term of terms) {
+        if (term !== null) {
+          const previousRows = [...panel.querySelectorAll(rowSelector)].map(rowText).join('\n');
+          if (wrap.contains(search)) triggerQuery = { input: search, original: triggerQuery?.original ?? search.value, term };
+          setValue(search, term);
+          await wait(() => {
+            const displayed = [...panel.querySelectorAll(rowSelector)].map(rowText).join('\n');
+            return displayed !== previousRows && (displayed || panel.querySelector('.phoenix-selectList__empty'));
+          });
+        } else if (!panel.querySelector(rowSelector)) await wait(() => panel.querySelector(rowSelector));
+        found = await scanBeisenVirtualList(panel, matches, options);
+        if (found.length || options.signal?.aborted) break;
+      }
+    }
+    if (found.length !== 1) return false;
+    if (constant) {
+      const liveRadio = () => {
+        if (!panel.isConnected) return null;
+        const rows = matches();
+        if (rows.length !== 1) return null;
+        const visible = [...rows[0].querySelectorAll('.icon-container svg.RadioUnchecked')].filter(svg => {
+          const rect = svg.getBoundingClientRect();
+          return svg.isConnected && rect.width > 0 && rect.height > 0 && isElementTrulyVisible(svg) &&
+            (!svg.checkVisibility || svg.checkVisibility({ opacityProperty: true, visibilityProperty: true }));
+        });
+        return visible.length === 1 ? visible[0] : null;
+      };
+      let clicked = false;
+      for (let attempt = 0; attempt < 2 && !clicked; attempt++) {
+        const radio = await wait(liveRadio);
+        if (!radio || options.signal?.aborted) return false;
+        clicked = await clickFillControl(radio, options, node => liveRadio() === node);
+      }
+      if (!clicked) return false;
+      // This picker stages its choice; commit only a verified single item in its own footer.
+      const pending = await wait(() => {
+        const count = panel.querySelector('.select-data-num-text')?.textContent.trim();
+        const selectedArea = panel.querySelector('.right-container .select-data-container');
+        const labels = selectedArea?.querySelectorAll('.select-text-label');
+        return /^1\s*\//.test(count || '') && labels?.length === 1 &&
+          fieldOptionEquals(label, labels[0].textContent, value);
+      });
+      if (!pending) return false;
+      const confirm = [...panel.querySelectorAll('.selector-footer-button .phoenix-button__content')].filter(el => el.textContent.trim() === '确定');
+      if (confirm.length !== 1 || !await clickFillControl(confirm[0], options)) return false;
+    } else if (!await clickFillControl(found[0], options)) return false;
+    const committed = Boolean(await wait(selected));
+    if (committed && options.deferVerification) options.deferVerification(input, Date.now() + 120);
+    return committed;
+  } finally {
+    if (triggerQuery?.input.isConnected && triggerQuery.input.value === triggerQuery.term && !selected()) {
+      setValue(triggerQuery.input, triggerQuery.original);
+    }
+    if (panel.isConnected && isElementTrulyVisible(panel)) {
+      outside();
+      document.body.click();
+    }
+    input.blur();
+  }
+}
+
+function isBeisenDocumentInput(input) {
+  const item = input?.closest?.('.form-item--phoenix');
+  return !!item && input.tagName === 'INPUT' && beisenLabel(item) === '证件号码' && !!item.querySelector('.mobile-type-button');
+}
+
+function insertBeisenDocumentNumber(input, number, options) {
+  // Use the browser's text edit so the composite editor receives its normal input event.
+  // Avoid inserting a second copy if an input handler has already changed the field.
+  if (input.value || !input.isConnected || options.signal?.aborted) return false;
+  let edited = false;
+  let beforeEdit;
+  const noteEdit = () => { edited = true; };
+  const noteBeforeEdit = event => { beforeEdit = event; };
+  input.addEventListener('beforeinput', noteBeforeEdit, true);
+  input.addEventListener('input', noteEdit, true);
+  try {
+    if (document.activeElement === input && document.hasFocus()) document.execCommand('insertText', false, number);
+  } catch { /* Use the input setter when browser text editing is unavailable. */ }
+  finally {
+    input.removeEventListener('beforeinput', noteBeforeEdit, true);
+    input.removeEventListener('input', noteEdit, true);
+  }
+  if (input.value === number) recordFillTextWrite(input, '', number);
+  else if (!edited && !beforeEdit?.defaultPrevented && !input.value && !input.readOnly && !input.disabled && !options.signal?.aborted) {
+    setValue(input, number);
+  }
+}
+
+async function writeBeisenDocumentNumber(input, value, options = {}) {
+  const item = input.closest('.form-item--phoenix');
+  const number = String(value).trim();
+  if (input.readOnly || input.disabled || !input.isConnected || !number || options.signal?.aborted) return false;
+  if (input.value && input.value !== number) return false;
+  if (!input.value) {
+    input.focus({ preventScroll: true });
+    insertBeisenDocumentNumber(input, number, options);
+  }
+  // Phoenix commits this composite field to the parent form on blur. With focus in the
+  // browser side panel, Chromium can change activeElement without delivering either event.
+  const blurEvents = new Set();
+  const noteBlur = event => blurEvents.add(event.type);
+  input.addEventListener('blur', noteBlur);
+  input.addEventListener('focusout', noteBlur);
+  try {
+    input.blur();
+    for (const type of ['blur', 'focusout']) {
+      if (!blurEvents.has(type) && input.isConnected && input.value === number && !options.signal?.aborted) {
+        input.dispatchEvent(new FocusEvent(type, {bubbles: type === 'focusout', composed: true}));
+      }
+    }
+  } finally {
+    input.removeEventListener('blur', noteBlur);
+    input.removeEventListener('focusout', noteBlur);
+  }
+  // Phoenix reflects its committed model into the value attribute on rerender.
+  const accepted = () => input.isConnected && input.value === number &&
+    (!input.hasAttribute('value') || input.defaultValue === number) &&
+    !item.querySelector('.form-item__error')?.textContent.trim();
+  if (await waitFor(accepted, { timeoutMs: 1100, observe: item, task: options.task, signal: options.signal })) return true;
+  input.setAttribute('data-easyoffer-write-reason', input.value === number && item.querySelector('.form-item__error')?.textContent.trim()
+    ? 'validation_failed' : 'value_reset');
+  return false;
+}
+
+async function fillBeisenForm(profile, options = {}) {
+  const incremental = options?.mode === 'incremental';
+  const lists = beisenLists(profile);
   const addLabels = {education: '添加教育经历', work: '添加工作/实习经历',
-    project: '添加参与科研项目', award: '添加学习/工作获奖情况', family: '添加家庭成员及重要社会关系', paper: '添加发表文章、著作情况', patent: '添加专利', certificate: '添加证书'};
+    project: '添加参与科研项目', award: '添加学习/工作获奖情况', family: '添加家庭成员及重要社会关系',
+    paper: ['添加专业论著','添加发表文章、著作情况'], patent: '添加专利', certificate: ['添加专业资格','添加证书'], language: '添加语言能力'};
   const forms = kind => [...document.querySelectorAll('.ux-standard-form')].filter(f => beisenKind(f) === kind);
   // incremental 模式不新增经历条目，只补当前已有控件的空白
-  if (!incremental) {
-  for (const [kind, entries] of Object.entries(lists)) {
-    while (forms(kind).length && forms(kind).length < entries.length) {
-      await waitForFillCheckpoint(options?.task);
-      const button = [...document.querySelectorAll('span,button')].find(el =>
-        el.textContent.trim().replace(/\*$/, '') === addLabels[kind] && isElementTrulyVisible(el));
-      if (!button) break;
-      const count = forms(kind).length;
-      button.click();
-      for (let attempt = 0; attempt < 10 && forms(kind).length === count; attempt++) await sleep(100);
-      if (forms(kind).length === count) break;
+  if (!incremental || options?.completeRows) {
+    for (const [kind, entries] of Object.entries(lists)) {
+      if (!entries.length) continue;
+      let current = forms(kind);
+      let missing = beisenRowPlan(kind, current, entries).missing.length;
+      while (missing > 0) {
+        await waitForFillCheckpoint(options?.task);
+        const choices = [...document.querySelectorAll('span,button,[role=button]')].filter(el =>
+          [addLabels[kind]].flat().includes(el.textContent.trim().replace(/\*$/, '').trim()) &&
+          !el.closest('[disabled],[aria-disabled=true]') && isElementTrulyVisible(el));
+        const buttons = new Set(choices.filter(el => !choices.some(other => other !== el && el.contains(other)))
+          .map(el => el.closest('button,[role=button]') || el));
+        if (buttons.size !== 1) break;
+        const count = current.length;
+        [...buttons][0].click();
+        current = await waitFor(() => { const next = forms(kind); return next.length > count && next; },
+          { timeoutMs: 1000, observe: document.body, signal: options?.signal, task: options?.task });
+        if (!current) break;
+        const nextMissing = beisenRowPlan(kind, current, entries).missing.length;
+        if (nextMissing >= missing) break;
+        missing = nextMissing;
+      }
     }
-  }
   }
   let filledCount = 0;
   const manualFields = [];
   const fieldResults = [];
-  const indices = {};
+  const allForms = [...document.querySelectorAll('.ux-standard-form')];
+  const proofForms = new WeakMap();
+  beisenCaptureForms(allForms, proofForms);
+  if (options.task) options.task.beisenProofForms = proofForms;
+  const rows = beisenRowEntries(allForms, lists);
+  const conflictingHighest = lists.education.filter(e => e?.highestFullTime === '是').length > 1;
   const join = (...values) => values.filter(Boolean).join('\n');
-  for (const form of document.querySelectorAll('.ux-standard-form')) {
+  const basic = profile.basicInfo || {};
+  const job = profile.jobIntention || {};
+  const salaryUnitMatches = /^(人民币|CNY|RMB)$/i.test(job.salaryCurrency) && job.salaryUnit === '万元' && job.salaryPeriod === '年薪';
+  const intent = {'期望工作城市': job.expectedCity, '是否服从调剂': job.acceptAdjustment, '是否愿意去县级公司工作': job.acceptCounty,
+    '期望待遇(万元/年)': salaryUnitMatches ? job.expectedSalary : ''};
+  const partyDate = basic[membershipDateKey(basic.politicalStatus)];
+  for (const form of allForms) {
     await waitForFillCheckpoint(options?.task);
     const kind = beisenKind(form);
-    const index = indices[kind] || 0;
-    indices[kind] = index + 1;
-    const entry = lists[kind]?.[index] || {};
-    const basic = profile.basicInfo || {};
+    const entry = rows.get(form) || {};
+    const exam = languageEntryExam(entry);
+    const examValue = exam ? LANGUAGE_EXAMS[exam].name : entry.level || entry.name;
+    const selected = label => {
+      const wrap = [...form.querySelectorAll('.form-item--phoenix')].find(item => beisenLabel(item) === label)?.querySelector('.phoenix-select');
+      return wrap ? beisenSelectCurrentValue(wrap) : '';
+    };
     const maps = {
-      basic: {'姓名': basic.fullName, '电子邮箱': basic.email, '移动电话': basic.phone,
+      basic: {...intent, '姓名': basic.fullName, '电子邮箱': basic.email, '移动电话': basic.phone,
+        '证件号码': basic.idCard, '性别': basic.gender, '出生年月': basic.birthDate,
+        '党派': basic.politicalStatus, '加入党派时间': partyDate, '婚姻状况': basic.maritalStatus,
+        '身高(cm)': basic.height, '体重(公斤)': basic.weight, '健康状况': basic.health,
+        '紧急联系人': basic.emergencyContact, '紧急联系方式': basic.emergencyPhone,
+        '籍贯': basic.hometown, '生源地(高考时户口所在地)': basic.sourcePlace, '现居住地': basic.currentCity,
         '民族': basic.ethnicity, '国籍': basic.nationality, '通信地址': basic.address,
         '是否获得过奖学金': (profile.awards || []).some(a => /奖学金/.test(a.name)) ? '是' : '',
         '是否为学生干部': (profile.education || []).some(e => /班长|学习委员|学生干部/.test(e.description || '')) ? '是' : ''},
-      education: {'学校': entry.school, '专业名称': entry.major,
+      intention: intent,
+      education: {'学校': entry.school, '专业名称': entry.major, '第二专业': entry.secondMajor, '学位': entry.academicDegree,
+        '是否全日制': entry.fullTime, '是否最高全日制学历': entry.highestFullTime,
+        '是否主修': ({主修:'是',辅修:'否'})[entry.majorStatus] || entry.majorStatus,
         '学历': ({硕士:'硕士研究生',博士:'博士研究生'})[entry.degree] || entry.degree,
         '开始时间': entry.startDate, '结束时间': entry.endDate},
       work: {'单位名称': entry.company, '所在部门': entry.department, '职位名称': entry.position,
         '用工形式': entry.workType, '工作描述': join(entry.description, entry.achievements),
         '开始时间': entry.startDate, '结束时间': entry.endDate},
-      project: {'项目名称': entry.name, '担当角色': entry.role,
+      project: {'项目名称': entry.name, '担当角色': entry.role, '项目级别': entry.projectLevel,
         '主要工作内容': join(entry.description, entry.techStack, entry.responsibilities, entry.achievements),
         '开始时间': entry.startDate, '结束时间': entry.endDate},
-      award: {'奖项名称': entry.name, '获奖级别': entry.level === '校级' ? '院校级' : entry.level, '获奖时间': entry.date, '颁奖单位': entry.issuer},
-      family: {'称谓': entry.relation, '姓名': entry.name, '工作单位': entry.employer, '所属职务': entry.position},
-      skills: {'技能类别': profileSkillText(profile, ', ')},
-      intro: {'自我评价及求职目标': [profile.commonAnswers?.selfEvaluation, profile.commonAnswers?.careerGoal].filter(Boolean).join('\n') || profile.introTemplates?.default}
+      award: {'奖项名称': entry.name, '获奖级别': entry.level, '获奖时间': entry.date, '颁奖单位': entry.issuer,
+        '担当角色': entry.role, '其他补充': entry.description},
+      family: {'称谓': entry.relation, '姓名': entry.name, '出生日期': entry.birthDate, '政治面貌': entry.politicalStatus,
+        '工作单位': entry.employer, '所属职务': entry.position, '联系电话': entry.phone, '手机号码': entry.phone},
+      language: {'外语语种': entry.language, '语言等级': examValue, '得分': entry.score},
+      certificate: {'证书名称': entry.name, '获得时间': entry.date, '具有资格证书': beisenCertificateCategory(entry)},
+      paper: {'文章名、书名': entry.name, '论文名称': entry.name, '日期': entry.date, '刊物、出版社': entry.publisher,
+        '担任角色': entry.role, '内容摘要': entry.abstract},
+      skills: {'技能类别': form.querySelector('input[placeholder*="有证书认证的计算机技能"]')
+        ? [...new Set(lists.certificate.filter(c => beisenCertificateCategory(c) === '信息技术').map(c => c.name).filter(Boolean))].join('、')
+        : profileSkillText(profile, ', ')},
+      intro: {'爱好及特长': profile.commonAnswers?.hobbies || join(...new Set([basic.interests, basic.specialSkills])),
+        '优势与不足': profile.commonAnswers?.strengthsWeaknesses,
+        '其他': (profile.customAnswers || []).find(answer => exactQuestion(answer.question) === '其他')?.answer,
+        '自我评价及求职目标': join(profile.commonAnswers?.selfEvaluation, profile.commonAnswers?.careerGoal) || profile.introTemplates?.default}
     };
     for (const item of form.querySelectorAll('.form-item--phoenix')) {
       await waitForFillCheckpoint(options?.task);
-      const label = item.querySelector('.form-item__title')?.textContent.trim();
-      const value = maps[kind]?.[label];
-      const input = item.querySelector('input:not([type="file"]), textarea, select');
-      if (!value) continue;
+      const label = beisenLabel(item);
+      const mapped = Object.hasOwn(maps[kind] || {}, label);
+      const manualConfirmation = !mapped && ((isProtectedQuestion(label) && item.querySelector('.phoenix-radio') && !item.querySelector('input')) ||
+        (kind === 'attestation' && ['本人承诺','填表人签名','填表日期'].includes(label)));
+      if (!mapped && !manualConfirmation && kind !== 'family' && (!rows.has(form) || rows.get(form))) continue;
       const radios = [...item.querySelectorAll('.phoenix-radio')];
-      if (radios.length) {
-        if (radios.some(el => el.classList.contains('phoenix-radio--checked'))) continue;
-        const choice = radios.find(el => el.textContent.trim() === value);
-        if (choice) {
-          choice.click();
-          await sleep(100);
-          if (choice.classList.contains('phoenix-radio--checked')) filledCount++;
-        }
+      const input = item.querySelector('input:not([type="file"]):not([type="hidden"]), textarea, select');
+      const control = input || radios[0];
+      if (!control) continue;
+      const plainText = !radios.length && isBeisenPlainText(input);
+      siteFieldClaim(options, control, label);
+      item.querySelectorAll('input[type=radio]').forEach(el => options.attemptedFields?.add(el));
+      const value = maps[kind]?.[label];
+      const record = (status, reason = '') => fieldResults.push(beisenRememberResult(
+        {element: control, fieldType: label, label, status, reason, value}, proofForms, item));
+      const checked = el => el.classList.contains('phoenix-radio--checked') || el.getAttribute('aria-checked') === 'true' || el.querySelector('input:checked');
+      clearManualHint(control);
+      item.removeAttribute('data-job-autofill-manual');
+      item.querySelectorAll('.job-autofill-manual-hint').forEach(el => el.remove());
+      const verifyExistingDocument = options.deferDocumentNumber && isBeisenDocumentInput(input) &&
+        input.value && input.value === String(value ?? '').trim();
+      if (!verifyExistingDocument && (radios.length ? radios.some(checked) : fieldHasValue(input))) {
+        record('skipped_has_value');
         continue;
       }
-      if (!input || fieldHasValue(input)) continue;
-      // 本站日期精确到日，只有年月的简历不能擅自补成 1 日。
-      // 单字段异常/失败结构化落账（try/catch/finally），不影响后续字段。
+      if (rows.get(form) === null || (label === '是否最高全日制学历' && value === '是' && conflictingHighest)) {
+        record('needs_review', rows.get(form) === null ? 'record_ambiguous' : 'conflicting_highest_education');
+        continue;
+      }
+      if (value == null || String(value).trim() === '') {
+        const salaryNeedsUnits = label === '期望待遇(万元/年)' && (job.expectedSalary || job.expectedAnnualSalary) && !value;
+        record('needs_review', manualConfirmation ? 'manual_confirmation_required' : salaryNeedsUnits ? 'salary_unit_unconfirmed'
+          : mapped ? 'no_profile_value' : 'unrecognized_field');
+        continue;
+      }
+      if (kind === 'basic' && label === '加入党派时间') {
+        const selectedParty = beisenPartyStatus(form);
+        if (selectedParty !== null && !fieldOptionEquals('党派', selectedParty, basic.politicalStatus)) {
+          record('needs_review', 'political_status_unconfirmed');
+          continue;
+        }
+      }
+      if (kind === 'language' && label !== '外语语种' && (!fieldOptionEquals('外语语种', selected('外语语种'), entry.language) ||
+          label === '得分' && (!examValue || !fieldOptionEquals('语言等级', selected('语言等级'), examValue)))) {
+        record('needs_review', 'dependent_option_unconfirmed');
+        continue;
+      }
       const isDate = /时间|日期|年月/.test(label);
       try {
-        const success = isDate ? await fillBeisenDate(input, value, options) : (input.closest('.phoenix-select')
-          ? await fillBeisenSelect(input, value, options) : await fillField(input, value, options));
+        let success;
+        if (label === '证件号码') {
+          const type = item.querySelector('.mobile-type-button .phoenix-button__content')?.textContent.trim();
+          const sourceType = basic.idCardType || (/^\d{17}[\dX]$/i.test(value) ? '身份证' : '');
+          if (type && (!sourceType || !fieldOptionEquals('证件类型', type, sourceType))) {
+            record('needs_review', 'document_type_mismatch');
+            continue;
+          }
+          if (options.deferDocumentNumber && isBeisenDocumentInput(input)) {
+            options.deferDocumentNumber({ source: proofForms.get(form), item, element: input, label, value, type });
+            continue;
+          }
+        }
+        if (radios.length) {
+          const adjustment = label === '是否服从调剂' && ({'是':'接受','否':'不接受'})[value];
+          const choices = radios.filter(el => [String(value), adjustment].includes(el.textContent.trim()) &&
+            !el.matches('.phoenix-radio--disabled,[aria-disabled="true"]'));
+          success = choices.length === 1 && await clickFillControl(choices[0], options) && await waitFor(() => checked(choices[0]),
+            { timeoutMs: 500, observe: item, signal: options.signal, task: options.task });
+        } else if (isDate) success = await fillBeisenDate(input, value, options);
+        else if (isBeisenRegionInput(input, label)) success = await fillBeisenRegion(input, value, options);
+        else if (input.closest('.phoenix-select')) success = await fillBeisenSelect(input, value, options);
+        else {
+          // The composite ID/phone editor commits its draft on blur only after focus.
+          if (!input.disabled && !input.readOnly) input.focus({ preventScroll: true });
+          success = await fillField(input, value, options);
+          if (success && plainText) options.deferVerification?.(input, Date.now() + 320);
+        }
         if (success) {
           filledCount++;
-          input.style.backgroundColor = '#e8f5e9';
-          item.removeAttribute('data-job-autofill-manual');
-          fieldResults.push({ status: 'filled', fieldType: label, label, value });
+          record('filled');
+        } else if (plainText) {
+          const reason = control.getAttribute('data-easyoffer-write-reason') ||
+            (options.task?.undo?.has(control) ? 'value_reset' : 'beisen_text_unconfirmed');
+          record('needs_review', reason);
         } else {
-          const note = `${label}：${value}（请手动${isDate ? '确认具体日期' : '选择'}）`;
+          const reason = (isDate || isBeisenRegionInput(input, label)) && input.getAttribute('data-easyoffer-write-reason') ||
+            (isDate ? 'write_failed_or_option_not_found' : 'beisen_control_mismatch');
+          const instruction = reason === 'region_district_unavailable' ? `网站的区县列表没有与「${value}」对应的选项，请核对现行区县`
+            : !isDate ? '请手动选择' : reason === 'date_precision_required' ? '网站需要具体日期'
+            : reason === 'validation_failed' ? '日期无效，请核对简历'
+            : reason === 'value_reset' ? '网页未保留所选日期' : '网页日期控件未确认，请手动选择';
+          const note = `${label}（${instruction}）`;
           item.setAttribute('data-job-autofill-manual', note);
           let hint = item.querySelector('.job-autofill-manual-hint');
           if (!hint) {
@@ -482,23 +1215,20 @@ async function fillBeisenForm(profile, options) {
           hint.textContent = note;
           hint.style.color = '#a65b00';
           manualFields.push(note);
-          fieldResults.push({ status: 'needs_review', fieldType: label, label, value, reason: isDate ? 'date_precision' : 'beisen_control_mismatch' });
+          record('needs_review', reason);
         }
       } catch (err) {
         if (err?.name === 'AbortError') throw err;
         const note = `${label}：（填充异常 ${err?.message || err}）`;
         item.setAttribute('data-job-autofill-manual', note);
         manualFields.push(note);
-        fieldResults.push({ status: 'failed', fieldType: label, label, value, reason: err?.message || String(err) });
+        record('failed', err?.message || String(err));
       } finally {
         dismissOpenDropdownPanels();
       }
     }
   }
-  filledCount += await fillExtendedFields(profile, options);
-  if (!incremental) await handleResumeUpload(profile);
-  showNotification(`已填充 ${filledCount} 个字段；${manualFields.length} 项需手动确认，未知资料请自行补充`, 'warning');
-  return {filledCount, manualFields, results: [], fieldResults, isForm: true};
+  return { filledCount, manualFields, results: fieldResults, fieldResults, isForm: true };
 }
 
 function isMokaForm() {
@@ -762,33 +1492,295 @@ async function fillConfirmedDeclarations(profile, options) {
   }
 }
 
-async function fillBeisenDate(input, value, options) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  input.click();
-  const panel = () => [...document.querySelectorAll('.phoenix-calendar')].find(isElementTrulyVisible);
-  await sleep(100);
-  let picked = false;
-  for (let step = 0; step < 120; step++) {
-    const calendar = panel();
-    if (!calendar) break;
-    const shownYear = parseInt(calendar.querySelector('.phoenix-calendar-year-select')?.textContent, 10);
-    const shownMonth = parseInt(calendar.querySelector('.phoenix-calendar-month-select')?.textContent, 10);
-    if (!shownYear || !shownMonth) break;
-    if (shownYear === year && shownMonth === month) {
-      const cell = [...calendar.querySelectorAll('.phoenix-calendar-cell:not(.phoenix-calendar-last-month-cell):not(.phoenix-calendar-next-month-btn-day) .phoenix-calendar-date')]
-        .find(el => Number(el.textContent) === day && el.getAttribute('aria-disabled') !== 'true');
-      if (cell) { cell.click(); picked = true; }
-      break;
+function beisenDateShown(input) {
+  const wrap = input.closest('.phoenix-select');
+  return wrap ? beisenSelectCurrentValue(wrap) : input.value || '';
+}
+
+function isBeisenDateInput(input) {
+  const wrap = input.closest('.phoenix-select');
+  if (!wrap) return false;
+  const item = wrap.closest('.form-item--phoenix');
+  return !!item && /(?:日期|年月|生日|(?:加入党派|开始|结束|起始|截止|毕业|入学|入职|离职|获奖|取得|获得|发表|授予|颁发)时间)$/.test(beisenLabel(item));
+}
+
+function beisenDateMatches(input, parts, precision) {
+  const actual = elementDateParts(beisenDateShown(input));
+  return input.isConnected && !!actual && !!parts[precision - 1] && !!actual[precision - 1] &&
+    parts.slice(0, precision).every((part, index) => part === actual[index]);
+}
+
+function beisenCalendarMonth(text) {
+  const label = String(text || '').trim();
+  const number = /^(\d{1,2})(?:\s*月)?$/.exec(label);
+  if (number && Number(number[1]) <= 12) return Number(number[1]);
+  return ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'].indexOf(label) + 1;
+}
+
+function isBeisenRegionInput(input, label) {
+  if (!input?.closest('.phoenix-select')) return false;
+  const item = input.closest('.form-item--phoenix');
+  return !!item && /^(籍贯|生源地(?:\(高考时户口所在地\))?|现居住地|期望工作城市)$/.test(label || beisenLabel(item));
+}
+
+function beisenRegionPrefix(target, label) {
+  // Only drop a trailing administrative suffix. 市 within 沙市区 or 市中区
+  // belongs to the district name and must stay intact.
+  if (target.startsWith(label)) return label;
+  const short = label.replace(/(?:维吾尔|壮族|回族)?自治区$|特别行政区$|自治州$|[省市]$/, '');
+  return short.length >= 2 && target.startsWith(short) ? short : '';
+}
+
+async function findBeisenRegion(panel, value, wait, click, missingDistrict) {
+  const labels = () => [...panel.querySelectorAll('.area-data-container .area-text-label')].filter(isElementTrulyVisible);
+  const target = String(value).trim().replace(/[\s/／,，、>＞|-]+/g, '');
+  const path = [];
+  let remaining = target;
+  for (let depth = 0; depth < 4; depth++) {
+    const items = await wait(() => { const rows = labels(); return rows.length && rows; });
+    if (!items) return null;
+    const matches = items.map(label => ({ label, prefix: beisenRegionPrefix(remaining, label.textContent.trim()) }))
+      .filter(({ label, prefix }) => {
+        if (!prefix) return false;
+        // “吉林市” names a city, whereas “吉林省” names its province. Search
+        // an unqualified province abbreviation rather than guessing its level.
+        return depth !== 0 || !label.textContent.trim().endsWith('省') || prefix === label.textContent.trim() ||
+          (remaining !== prefix && remaining !== prefix + '市');
+      }).sort((a, b) => b.prefix.length - a.prefix.length);
+    if (!matches.length && depth === 0) {
+      // Search exposes the parent path and a total count. A city name alone is
+      // sufficient only if exactly one fully rendered option matches.
+      const search = panel.querySelector('.area-search-input input');
+      if (!search || search.readOnly) return null;
+      const leaf = String(value).trim().split(/[\/／>＞\s]+|(?<=省|市|自治区)(?=.)/).filter(Boolean).at(-1);
+      if (!leaf) return null;
+      setValue(search, leaf);
+      const found = await wait(() => {
+        const count = panel.querySelector('.search-result')?.textContent.match(/(\d+)\s*个/)?.[1];
+        const rows = labels();
+        if (!Number(count) || rows.length !== Number(count)) return false;
+        const hits = rows.flatMap(label => {
+          const name = label.textContent.trim();
+          const parent = label.closest('.area-item-container')?.querySelector('.area-item-path')?.textContent || '';
+          const parts = parent.split(/[\s/／>＞\-]+/).filter(Boolean).concat(name);
+          const matchesPath = parts.some((_, i) => {
+            let rest = target;
+            for (const part of parts.slice(i)) {
+              const prefix = beisenRegionPrefix(rest, part);
+              if (!prefix) return false;
+              rest = rest.slice(prefix.length);
+            }
+            return !rest;
+          });
+          return matchesPath ? [{ label, name, full: parts.join('') }] : [];
+        });
+        // Phoenix renders a transient 0 results (or the preceding rows) while
+        // its debounced search is still in flight.
+        return hits.length && { hits };
+      });
+      return found?.hits.length === 1 ? found.hits[0] : null;
     }
-    const direction = shownYear !== year ? (shownYear > year ? 'prev-year' : 'next-year') : (shownMonth > month ? 'prev-month' : 'next-month');
-    const button = calendar.querySelector(`.phoenix-calendar-${direction}-btn`);
-    if (!button) break;
-    button.click(); await sleep(45);
+    if (!matches.length) {
+      if (depth > 0 && /^[\p{Script=Han}]{1,15}(?:区|县|市|旗)$/u.test(remaining)) missingDistrict?.();
+      return null;
+    }
+    if (matches[0].prefix === matches[1]?.prefix) return null;
+    const { label, prefix } = matches[0];
+    const name = label.textContent.trim();
+    path.push(name);
+    remaining = remaining.slice(prefix.length);
+    if (!remaining) return { label, name, full: path.join('') };
+    if (label.classList.contains('no-hover') || !await click(label)) return null;
+    if (!await wait(() => panel.querySelector('.phoenix-breadcrumb-item-current')?.textContent.trim() === name &&
+        !labels().some(node => node === label && node.textContent.trim() === name))) return null;
   }
-  document.body.click(); input.blur(); await sleep(80);
-  const displayed = input.closest('.phoenix-select')?.querySelector('.phoenix-select__tipEle')?.textContent.trim() || input.value;
-  return picked && displayed?.replace(/\//g, '-') === value;
+  return null;
+}
+
+async function fillBeisenRegion(input, value, options = {}) {
+  input.removeAttribute('data-easyoffer-write-reason');
+  const wrap = input.closest('.phoenix-select');
+  const target = normalizeRegionPath(value);
+  if (!wrap || !target || input.disabled) return false;
+  const item = input.closest('.form-item--phoenix');
+  if (!item) return false;
+  const label = beisenLabel(item);
+  const form = item.closest('.ux-standard-form, form.form--phoenix');
+  const url = location.href;
+  const displayed = () => {
+    if (location.href !== url) return [];
+    // Committing multiple chips can replace the input, its wrapper, or the
+    // whole field. Read the current display in this form, also in read-only mode.
+    let live = item;
+    if (!live.isConnected || beisenLabel(live) !== label) {
+      if (!form?.isConnected) return [];
+      const candidates = [...form.querySelectorAll('.form-item--phoenix')].filter(node => beisenLabel(node) === label);
+      if (candidates.length !== 1) return [];
+      live = candidates[0];
+    }
+    return beisenSelectCurrentValue(live).split(/[、,，;；]/).map(normalizeRegionPath).filter(Boolean);
+  };
+  if (displayed().length) return false; // Preserve existing selections.
+  const visiblePanels = () => [...document.querySelectorAll('.area-selector-container')].filter(isElementTrulyVisible);
+  const previous = new Set(visiblePanels());
+  const ownedId = input.getAttribute('aria-controls') || wrap.getAttribute('aria-controls');
+  const wait = test => waitFor(test, { timeoutMs: options.openTimeoutMs || 1200,
+    signal: options.signal, task: options.task, observe: document.body });
+  const click = node => clickFillControl(node, options);
+  let panel;
+  try {
+    // Picking a field for Quick Reference also opens the site's picker. Close
+    // its empty draft, then reopen from this trigger to establish ownership.
+    if (getFillTarget()?.el === input && previous.size === 1) {
+      const open = [...previous][0];
+      const cancel = [...open.querySelectorAll('.area-footer-button .phoenix-button__content')].find(node => node.textContent.trim() === '取消');
+      if (cancel) {
+        if (open.querySelector('.select-data-num-text')?.textContent.trim() !== '0') return false;
+        if (!await click(cancel) || !await wait(() => !isElementTrulyVisible(open))) return false;
+        previous.delete(open);
+      }
+    }
+    if (!await click(wrap)) return false;
+    panel = await wait(() => {
+      const owned = ownedId && document.getElementById(ownedId);
+      const candidates = visiblePanels().filter(node => ownedId ? owned && (owned.contains(node) || node.contains(owned)) : !previous.has(node));
+      return candidates.length === 1 && candidates[0];
+    });
+    if (!panel) return false;
+    const count = () => panel.querySelector('.select-data-num-text')?.textContent.trim();
+    if (count() !== '0') return false;
+    const limit = Number(panel.querySelector('.select-data-num-limit')?.textContent.match(/\d+/)?.[0]) || 1;
+    const intendedCities = label === '期望工作城市';
+    const rootNames = await wait(() => {
+      const names = [...panel.querySelectorAll('.area-data-container .area-text-label')].map(node => node.textContent.trim());
+      return names.length && names;
+    });
+    if (!rootNames) return false;
+    const isProvince = text => rootNames.some(name => beisenRegionPrefix(text, name) === text);
+    const requests = intendedCities ? String(value).split(/[,，、;；|\n]+/).flatMap(raw => {
+      const parts = raw.split(/[/／]/).map(text => text.trim()).filter(Boolean);
+      // “广东省/潮州市” is a path, “北京/上海” or “深圳/杭州” lists alternatives.
+      const path = parts.length > 1 && ((isProvince(parts[0]) && !isProvince(parts[1])) || /(?:区|县|旗)$/.test(parts.at(-1)));
+      return path ? [raw.trim()] : parts;
+    }) : [String(value).trim()];
+    if (!requests.length || requests.length > limit) return false;
+    const chosen = [];
+    const matches = actual => actual.length === chosen.length && chosen.every(region =>
+      actual.filter(text => region.has(text)).length === 1) && actual.every(text => chosen.filter(region => region.has(text)).length === 1);
+    for (const request of requests) {
+      if (chosen.length) {
+        const search = panel.querySelector('.area-search-input input');
+        if (search?.value) {
+          setValue(search, '');
+          if (!await wait(() => !panel.querySelector('.search-result'))) return false;
+        }
+        const root = panel.querySelector('.phoenix-breadcrumb-item:not(.phoenix-breadcrumb-item-current) .phoenix-breadcrumb-link');
+        if (root && (!await click(root) || !await wait(() =>
+          panel.querySelector('.phoenix-breadcrumb-item-current')?.textContent.trim() === '全部省市'))) return false;
+      }
+      const hit = await findBeisenRegion(panel, request, wait, click, () =>
+        input.setAttribute('data-easyoffer-write-reason', 'region_district_unavailable'));
+      if (!hit) return false;
+      const full = normalizeRegionPath(hit.full);
+      if (chosen.some(region => region.has(full))) continue;
+      if (!await click(hit.label.closest('.area-item-name')?.querySelector('.icon-container.visible svg'))) return false;
+      chosen.push(new Set([normalizeRegionPath(hit.name), full]));
+      if (!await wait(() => count() === String(chosen.length) && matches(
+        [...panel.querySelectorAll('.right-container .select-area-text-label')].map(node => normalizeRegionPath(node.textContent))))) return false;
+    }
+    const buttons = [...panel.querySelectorAll('.area-footer-button .phoenix-button__content')];
+    const confirm = buttons.find(node => node.textContent.trim() === '确定');
+    if (!await click(confirm)) return false;
+    if (!await wait(() => !isElementTrulyVisible(panel) && matches(displayed()))) return false;
+    input.blur();
+    // Phoenix updates its controlled chips on blur. Check the accepted leaf
+    // again after that update, including when the profile used the full path.
+    await sleep(120);
+    await waitForFillCheckpoint(options.task);
+    return !options.signal?.aborted && matches(displayed());
+  } finally {
+    if (panel?.isConnected && isElementTrulyVisible(panel)) {
+      const cancel = [...panel.querySelectorAll('.area-footer-button .phoenix-button__content')].find(node => node.textContent.trim() === '取消');
+      if (cancel) cancel.click();
+      else dismissOpenDropdownPanels();
+    }
+    input.blur();
+  }
+}
+
+async function fillBeisenDate(input, value, options = {}) {
+  input.removeAttribute('data-easyoffer-write-reason');
+  const fail = reason => { input.setAttribute('data-easyoffer-write-reason', reason); return false; };
+  const parts = elementDateParts(value);
+  if (!parts) return fail('validation_failed');
+  const [year, month, day] = parts;
+  const precision = dateControlPrecision(input);
+  if (precision && !parts[precision - 1]) return fail('date_precision_required');
+  if (input.disabled || options.signal?.aborted) return false;
+  const existing = elementDateParts(beisenDateShown(input));
+  if (existing) return beisenDateMatches(input, parts, precision || (existing[2] ? 3 : 2));
+  if (input.type === 'date' || input.type === 'month') {
+    return await fillField(input, value, options);
+  }
+
+  // A portal belongs to this field only if it is explicitly linked or opened by this click.
+  const calendars = () => [...document.querySelectorAll('.phoenix-calendar')].filter(isElementTrulyVisible);
+  const previous = new Set(calendars());
+  const panel = () => {
+    const owned = document.getElementById(input.getAttribute('aria-controls') || '');
+    const visible = calendars();
+    const linked = owned && visible.find(el => el === owned || el.contains(owned) || owned.contains(el));
+    const opened = visible.filter(el => !previous.has(el));
+    return linked || (opened.length === 1 ? opened[0] : null);
+  };
+  const wait = (test, timeoutMs = 350) => waitFor(test, { timeoutMs, task: options.task, signal: options.signal, observe: document.body });
+  let picked = false;
+  let requiredPrecision = 3;
+  try {
+    const trigger = input.closest('.phoenix-unmodeled-layer .phoenix-select') || input;
+    if (!await clickFillControl(trigger, options)) return false;
+    if (!await wait(panel, options.openTimeoutMs || 750)) return fail('write_failed_or_option_not_found');
+    const monthGrid = () => panel()?.querySelector('.phoenix-calendar-month-panel');
+    if (panel().matches('.phoenix-calendar-month-calendar') || monthGrid() && !panel().querySelector('.phoenix-calendar-date')) requiredPrecision = 2;
+    if (!parts[requiredPrecision - 1]) return fail('date_precision_required');
+    const period = () => [
+      parseInt(panel()?.querySelector(requiredPrecision === 2
+        ? '.phoenix-calendar-month-panel-year-select' : '.phoenix-calendar-year-select')?.textContent, 10),
+      beisenCalendarMonth(panel()?.querySelector('.phoenix-calendar-month-select')?.textContent)
+    ];
+    for (let step = 0; step < 120 && !options.signal?.aborted; step++) {
+      const calendar = panel();
+      const [shownYear, shownMonth] = period();
+      if (!calendar || !shownYear || requiredPrecision === 3 && !shownMonth) break;
+      if (requiredPrecision === 2 && shownYear === year) {
+        const months = [...(monthGrid()?.querySelectorAll('.phoenix-calendar-month-panel-month') || [])]
+          .filter(el => beisenCalendarMonth(el.textContent) === month && !el.closest('[aria-disabled="true"],[disabled],.phoenix-calendar-month-panel-cell-disabled'));
+        if (months.length === 1) picked = await clickFillControl(months[0], options);
+        break;
+      }
+      if (requiredPrecision === 3 && shownYear === year && shownMonth === month) {
+        const cells = [...calendar.querySelectorAll('.phoenix-calendar-cell .phoenix-calendar-date')]
+          .filter(el => Number(el.textContent) === day &&
+            !el.closest('[aria-disabled="true"],[disabled],.phoenix-calendar-disabled-cell,.phoenix-calendar-last-month-cell,.phoenix-calendar-next-month-btn-day'));
+        if (cells.length === 1) picked = await clickFillControl(cells[0], options);
+        break;
+      }
+      const direction = shownYear !== year ? (shownYear > year ? 'prev-year' : 'next-year') : (shownMonth > month ? 'prev-month' : 'next-month');
+      const selectors = requiredPrecision === 2 ? ['.phoenix-calendar-month-panel-', '.phoenix-calendar-'] : ['.phoenix-calendar-'];
+      const arrow = selectors.map(prefix => calendar.querySelector(prefix + direction + '-btn')).find(isElementTrulyVisible);
+      if (!await clickFillControl(arrow, options)) break;
+      if (!await wait(() => { const [y, m] = period(); return y && (shownYear !== y || m && shownMonth !== m); })) break;
+    }
+  } finally {
+    if (panel()) dismissOpenDropdownPanels();
+    input.blur();
+  }
+  if (!picked || options.signal?.aborted) return fail('write_failed_or_option_not_found');
+  if (!await wait(() => beisenDateMatches(input, parts, requiredPrecision))) return fail('value_reset');
+  // React controls may briefly display a draft and clear it on blur.
+  await sleep(120);
+  await waitForFillCheckpoint(options.task);
+  return !options.signal?.aborted && (beisenDateMatches(input, parts, requiredPrecision) || fail('value_reset'));
 }
 
 var  EXTENDED_MAPPINGS = {
@@ -983,9 +1975,8 @@ function extendedEntry(input, profile) {
   const phoenix = input.closest('.ux-standard-form');
   if (phoenix && isBeisenForm()) {
     const kind = beisenKind(phoenix);
-    const section = { education: 'education', work: 'workExperience', project: 'projects', award: 'awards', family: 'familyMembers', paper: 'papers', patent: 'patents', certificate: 'certificates' }[kind];
-    const index = [...document.querySelectorAll('.ux-standard-form')].filter(form => beisenKind(form) === kind).indexOf(phoenix);
-    return { section, entry: profile[section]?.[index] };
+    const forms = [...document.querySelectorAll('.ux-standard-form')];
+    return { section: BEISEN_SECTIONS[kind], entry: beisenRowEntries(forms, beisenLists(profile)).get(phoenix) };
   }
   if (isXhsForm()) {
     const card = input.closest('.rounded-md');
@@ -1083,7 +2074,7 @@ async function fillExtendedFields(profile, options) {
     if (section === 'awards' && label === '获奖情况描述/链接') value = [entry?.description, entry?.url].filter(Boolean).join('\n');
     if (section === 'patents' && label === '专利描述/链接') value = [entry?.description, entry?.url].filter(Boolean).join('\n');
     if (!value && label === '自我评价及求职目标') value = [profile.commonAnswers?.selfEvaluation, profile.commonAnswers?.careerGoal].filter(Boolean).join('\n') || profile.introTemplates?.default;
-    if (!value && label === '期望待遇（万元/年）') {
+    if (!value && label.normalize('NFKC') === '期望待遇(万元/年)') {
       const salary = profile.jobIntention || {};
       if (salary.expectedSalary && (!/^(人民币|CNY|RMB)$/.test(salary.salaryCurrency) || salary.salaryUnit !== '万元' || salary.salaryPeriod !== '年薪')) {
         markManual(input, `${salary.expectedSalary}（请确认币种、万元单位和年薪周期）`); continue;
@@ -1092,7 +2083,7 @@ async function fillExtendedFields(profile, options) {
     }
     if (Array.isArray(value)) value = value.join('\n');
     if (!value) continue;
-    if (/日期|时间/.test(label) && /^\d{4}-\d{2}$/.test(value) && (isBeisenForm() || input.type === 'date')) {
+    if (/日期|时间/.test(label) && /^\d{4}-\d{2}$/.test(value) && input.type === 'date') {
       markManual(input, `${value}（请确认具体日期）`); continue;
     }
     // 单字段异常不阻断其余扩展字段
@@ -1100,7 +2091,10 @@ async function fillExtendedFields(profile, options) {
       if (await fillSiteControl(input, value, options)) {
         count++;
         const previous = resultsByField.get(input);
-        if (previous) Object.assign(previous, { status: 'filled', reason: '', value });
+        if (previous) {
+          Object.assign(previous, { status: 'filled', reason: '', value });
+          beisenRememberResult(previous, options?.task?.beisenProofForms);
+        }
         else options?.results?.push(fillResultEntry(input, null, 'filled', '', value));
       } else markManual(input, value);
     } catch (err) {
@@ -1111,21 +2105,78 @@ async function fillExtendedFields(profile, options) {
   return count;
 }
 
-// 附件仅按明确用途选择，设置 input.files 不代表网站已接收。
-async function handleResumeUpload(profile) {
+var attachmentSelections = globalThis.__EASYOFFER_ATTACHMENT_SELECTIONS__ ||= new WeakMap();
+
+function attachmentSlot(input) {
+  const field = input.closest('.form-item--phoenix, .ant-form-item, .el-form-item, .form-group');
+  const phoenix = !!field?.matches('.form-item--phoenix');
+  const uploader = input.closest('.file-uploader__wrapper, .ant-upload-wrapper, .el-upload');
+  const label = phoenix ? beisenLabel(field) : getClosestLabelText(input);
+  const kinds = [
+    ['resume', /简历附件|附件简历|上传简历|^简历$|\bresume\b|\bcv\b/i],
+    ['idPhoto', /证件照|标准照/], ['lifePhoto', /生活照/], ['works', /作品附件|上传作品|作品集附件/]
+  ].filter(([, pattern]) => pattern.test(label));
+  if (kinds.length !== 1) return null;
+  const kind = kinds[0][0];
+  // The China Life header uploads into a parser which rebuilds the entire form.
+  // Its generated classes and button labels change after a file is present.
+  if (isBeisenForm() || /(?:^|\.)zhiye\.com$/i.test(location.hostname)) {
+    if (!phoenix || !field.closest('.ux-standard-form, form.form--phoenix')) return null;
+    if (kind === 'resume' && !/^(?:简历附件|附件简历)$/.test(label)) return null;
+  }
+  const container = (field?.querySelectorAll('input[type="file"]').length === 1 && field) || uploader || input.closest('label') ||
+    (input.parentElement?.matches('div, span, section') && input.parentElement.querySelectorAll('input[type="file"]').length === 1
+      ? input.parentElement : input);
+  if (kind === 'resume') {
+    const description = (input.getAttribute('aria-describedby') || '').split(/\s+/)
+      .map(id => id && document.getElementById(id)?.textContent).filter(Boolean).join(' ');
+    const purpose = [label, input.name, input.id, input.title, description, container.innerText].join(' ');
+    if (/(?:解析|导入|提取)(?:本地|现有|上传的)?简历|简历.{0,8}(?:解析|导入|提取)|自动(?:解析|填充|填写)|(?:parse|import|extract)[-_\s]*(?:your\s+)?(?:resume|cv)|(?:resume|cv)[-_\s]*(?:pars|import|extract)/i.test(purpose)) return null;
+  }
+  return { input, field, container, label, kind };
+}
+
+function attachmentAlreadyPresent({ input, container }) {
+  return input.files?.length > 0 || !!input.value || Boolean(input.dataset.capybaraFileSelected) ||
+    /重新上传|重新选择文件|替换文件|上传中|正在上传|上传成功/.test(container.innerText || '') ||
+    Boolean(container.querySelector('.ant-upload-list-item, .el-upload-list__item, [data-file-name]:not([data-file-name=""])'));
+}
+
+// A controlled uploader can replace or clear its native input immediately after
+// change. Remember that slot in the current form as well as reading the site's file list.
+async function handleResumeUpload(profile, options = {}) {
+  const notes = [];
+  const ordinals = new Map();
   for (const input of document.querySelectorAll('input[type="file"]')) {
-    if (input.disabled || input.files?.length || input.dataset.capybaraFileSelected) continue;
-    const label = getClosestLabelText(input);
-    const kinds = [
-      ['resume', /简历附件|附件简历|上传简历|^简历$|\bresume\b|\bcv\b/i],
-      ['idPhoto', /证件照|标准照/], ['lifePhoto', /生活照/], ['works', /作品附件|上传作品|作品集附件/]
-    ].filter(([, pattern]) => pattern.test(label));
-    if (kinds.length !== 1) continue;
-    const kind = kinds[0][0];
+    await waitForFillCheckpoint(options.task);
+    throwIfFillCancelled(options.signal);
+    const slot = attachmentSlot(input);
+    if (!slot) continue;
+    const { kind, label, field, container } = slot;
+    const owner = input.form || field?.closest('.ux-standard-form') || field || container;
+    const siblings = ordinals.get(owner) || new Map();
+    ordinals.set(owner, siblings);
+    const index = siblings.get(label) || 0;
+    siblings.set(label, index + 1);
+    const key = label + ':' + index;
+    const url = location.href;
+    const attempts = attachmentSelections.get(owner) || new Map();
+    attachmentSelections.set(owner, attempts);
+    const unavailable = () => !input.isConnected || input.matches(':disabled') || location.href !== url ||
+      attempts.get(key) === url || attachmentAlreadyPresent(slot);
+    if (unavailable()) continue;
     const refs = kind === 'works' ? profile.attachments?.works || [] : [profile.attachments?.[kind]].filter(Boolean);
+    if (!refs.length && !(kind === 'resume' && profile.resumeFile)) continue;
+    const note = (text, reason) => {
+      const message = label + '：' + text;
+      notes.push(message);
+      options.results?.push({ element: input, fieldType: kind, label, status: 'needs_review', reason });
+      if (input.isConnected) markManual(input, message);
+    };
     try {
       const candidates = [];
       for (const ref of refs) {
+        throwIfFillCancelled(options.signal);
         const response = await runtimeSend({ action: 'getAttachment', profileId: profile.id, id: ref.id });
         if (!response?.success) throw new Error(response?.error || '附件读取失败');
         candidates.push(response.file);
@@ -1133,6 +2184,7 @@ async function handleResumeUpload(profile) {
       if (kind === 'resume' && !candidates.length && profile.resumeFile) candidates.push({ name: profile.resumeFileName || 'resume.pdf', dataUrl: profile.resumeFile });
       const transfer = new DataTransfer();
       for (const candidate of candidates) {
+        if (!candidate?.dataUrl?.startsWith('data:')) throw new Error('附件内容无法读取');
         const blob = await (await fetch(candidate.dataUrl)).blob();
         const file = new File([blob], candidate.name, { type: blob.type });
         const accepted = input.accept.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -1141,11 +2193,27 @@ async function handleResumeUpload(profile) {
         transfer.items.add(file);
         if (!input.multiple) break;
       }
-      if (!transfer.files.length) continue;
+      await waitForFillCheckpoint(options.task);
+      throwIfFillCancelled(options.signal);
+      if (unavailable()) continue;
+      // Site code may reuse this node for a different uploader while the files load.
+      const current = attachmentSlot(input);
+      if (current?.kind !== kind || current.label !== label || current.container !== container) continue;
+      if (!transfer.files.length) { note('文件类型与网页要求不符，请手动核对', 'attachment_type_mismatch'); continue; }
       input.files = transfer.files;
+      if (input.files.length !== transfer.files.length) { note('网页未接受所选文件', 'attachment_not_selected'); continue; }
+      attempts.set(key, url);
       input.dataset.capybaraFileSelected = 'true';
       input.dispatchEvent(new Event('change', { bubbles: true }));
-      markManual(input, '已选择附件，请核对网站是否接收；重新上传请在网站手动操作');
-    } catch (error) { markManual(input, error.message); }
+      if (input.multiple && transfer.files.length < candidates.length) {
+        note(`已选择 ${transfer.files.length} 个文件，其余文件类型与网页要求不符，请核对`, 'attachment_partially_selected');
+      } else {
+        note('已选择文件，请核对网站是否接收', 'attachment_selected');
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      note(error.message || '附件读取失败', 'attachment_read_failed');
+    }
   }
+  return notes;
 }

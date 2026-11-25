@@ -10,9 +10,8 @@ let currentProfile = null;
 let allProfiles = [];
 let activeProfileId = null;
 
-// 一键/增量填入的页面响应超时；AI 助填逐题解析较慢，给足 5 分钟
-const FILL_TIMEOUT_MS = 30 * 1000;
-const AI_FILL_TIMEOUT_MS = 5 * 60 * 1000;
+// 仅限页面确认收到命令的等待时间，实际填写由页面持有，可暂停、重连。
+const TASK_ACK_TIMEOUT_MS = 3000;
 const REGION_START_TIMEOUT_MS = 10 * 1000;
 
 // 任务反馈自动消失时长（错误信息保持展示，便于阅读真实原因）
@@ -22,6 +21,7 @@ const FEEDBACK_AUTO_HIDE_MS = {
 };
 
 let feedbackHideTimer = null;
+let pageSummary = null;
 
 // ============================================================================
 // 初始化
@@ -96,7 +96,9 @@ function sendTabMessage(tabId, message, timeoutMs) {
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(new Error(`等待页面响应超时（${Math.round(timeoutMs / 1000)} 秒），请刷新网页后重试`));
+      const error = new Error('等待页面响应超时');
+      error.name = 'TimeoutError';
+      reject(error);
     }, timeoutMs);
 
     try {
@@ -194,20 +196,24 @@ async function injectContentScriptsIntoTab(tabId) {
  * 失败时抛出带 reason 的 Error（message 为面向用户的行动指引），成功时返回 outcome.response。
  */
 async function sendTabTaskWithReady(tab, message, timeoutMs) {
+  function isCurrent() { return typeof Sidebar === 'undefined' || Sidebar.isCurrentPage(tab); }
   const outcome = await ContentReady.runTabTask({
     url: tab.url,
     sendPing: () => pingContentScript(tab.id),
     inject: () => injectContentScriptsIntoTab(tab.id),
     sendTask: () => sendTabMessage(tab.id, message, timeoutMs),
-    onEvent: handleReadyEvent
+    onEvent: event => { if (isCurrent()) handleReadyEvent(event); }
   });
   if (!outcome.ok) {
-    updatePageStatusFromOutcome(outcome);
+    if (isCurrent()) {
+      if (outcome.reason === 'task-timeout') setPageStatus('ready');
+      else updatePageStatusFromOutcome(outcome);
+    }
     const err = new Error(outcome.message);
     err.reason = outcome.reason;
     throw err;
   }
-  setPageStatus('ready');
+  if (isCurrent()) setPageStatus('ready');
   return outcome;
 }
 
@@ -292,8 +298,11 @@ function setPageStatus(state, text) {
 
   row.className = 'page-status is-' + state;
   const restricted = state === 'restricted';
-  document.getElementById('sidebarPageActions').disabled = restricted;
+  const empty = state === 'ready' && pageSummary?.hasResumeForm === false;
+  document.getElementById('sidebarPageActions').disabled = restricted || empty;
   document.getElementById('highlightBtn').disabled = restricted;
+  if (empty) text = '未检测到网申表单，请先进入简历填写页';
+  else if (state === 'ready' && pageSummary?.fillableCount > 0) text = `页面已就绪 · 检测到 ${pageSummary.fillableCount} 个字段`;
   textEl.textContent = text || PAGE_STATUS_TEXT[state] || state;
   if (reconnectBtn) {
     reconnectBtn.hidden = state !== 'needs-action';
@@ -310,6 +319,7 @@ function handleReadyEvent(evt) {
 function updatePageStatusFromOutcome(outcome) {
   if (!outcome) return;
   if (outcome.ok) {
+    pageSummary = outcome.pageSummary || null;
     setPageStatus('ready', outcome.recovered ? '页面已就绪（已自动恢复连接）' : PAGE_STATUS_TEXT.ready);
     return;
   }
@@ -369,11 +379,13 @@ function renderCustomDropdown() {
 
   if (!currentProfile) {
     nameLabel.textContent = '暂无简历资料';
+    document.getElementById('profileDropdownBtn').title = nameLabel.textContent;
     menu.innerHTML = '<div class="dropdown-item" style="color:var(--yy-text-3);cursor:default;">暂无简历资料</div>';
     return;
   }
 
   nameLabel.textContent = currentProfile.name || '默认资料';
+  document.getElementById('profileDropdownBtn').title = nameLabel.textContent;
   menu.innerHTML = '';
 
   allProfiles.forEach(profile => {
@@ -426,6 +438,7 @@ function bindEvents() {
     themeBtn.addEventListener('click', toggleTheme);
   }
   document.getElementById('captureJobBtn')?.addEventListener('click', event => captureCurrentJob(event));
+  document.getElementById('dismissTaskFeedback')?.addEventListener('click', hideTaskFeedback);
 
   // 手动重新连接：重新执行 初始检测 → 必要时补注 的完整流程
   const reconnectBtn = document.getElementById('reconnectBtn');
@@ -584,7 +597,7 @@ function bindEvents() {
       try {
         await chrome.tabs.create({ url: link.href });
       } catch (error) {
-        showTaskFeedback('warning', '打开页面失败：' + error.message);
+        showToast('打开页面失败：' + error.message, 'warning');
       }
     });
   }
@@ -616,141 +629,73 @@ async function switchProfile(profileId) {
  * 一键 / 增量填入共用流程：发送 fillForm（增量携带 mode:'incremental'）。
  * 按钮在 finally 中恢复；错误信息原样呈现给用户。
  */
-async function runFillTask({ btn, mode, loadingText }) {
-  if (!currentProfile) {
+async function runFillTask({ btn, mode = 'full', loadingText, ai = false }) {
+  const profile = currentProfile;
+  if (!profile) {
     showTaskFeedback('warning', '请先在「配置资料与简历」中完善简历资料');
     return;
   }
-
-  const profile = currentProfile;
-  Sidebar.clearResult();
+  const requestId = crypto.randomUUID();
+  let tab;
   btn.disabled = true;
-  showTaskFeedback('loading', loadingText);
-  if (typeof appLog !== 'undefined') {
-    appLog.info('popup', 'fill.start', mode === 'incremental' ? '开始增量填入' : '开始一键填入', { profile: currentProfile.name });
-  }
-
   try {
-    const tab = await getActiveTab();
-
-    const message = { action: 'fillForm', profile, sidePanel: true };
-    if (mode) message.mode = mode;
-    if (mode === 'incremental') message.completeRows = document.getElementById('incrementalAddRows')?.checked === true;
-
-    // 连通性编排 + 任务单次发送；失败抛出带 reason 的结构化错误
-    const outcome = await sendTabTaskWithReady(tab, message, FILL_TIMEOUT_MS);
+    tab = await getActiveTab();
     if (!Sidebar.isCurrentPage(tab)) return;
-    const response = outcome.response;
-
-    if (!response) {
-      showTaskFeedback('error', '页面没有返回填入结果，请刷新网页后重试');
-      return;
-    }
-    if (response.success === false) {
-      const detail = response.error || '未知错误';
-      if (typeof appLog !== 'undefined') appLog.error('popup', 'fill.fail', '填入失败', detail);
-      showTaskFeedback('error', '填入失败：' + detail);
-      return;
-    }
-
-    const result = response.result || {};
-    if (result.cancelled) {
-      showTaskFeedback('warning', '已取消填写。请核对网页上已经写入的内容。');
-      return;
-    }
-    const count = result.filledCount ?? 0;
-    Sidebar.showDetails(tab, result);
-    const manualCount = Array.isArray(result.manualFields) ? result.manualFields.length : 0;
-    const rows = Array.isArray(result.results) ? result.results : [];
-    const skippedCount = result.skippedCount ?? rows.filter(item => item.status === 'skipped_has_value').length;
-    const reviewCount = (result.reviewCount ?? rows.filter(item => item.status === 'needs_review').length) +
-      (result.failedCount ?? rows.filter(item => item.status === 'failed').length);
-
-    if (count > 0) {
-      let msg = `已填入 ${count} 个字段`;
-      if (manualCount > 0) msg += `，另有 ${manualCount} 项建议人工核对`;
-      if (mode === 'incremental') msg += '（仅补空白字段）';
-      showTaskFeedback('success', msg);
-      Sidebar.rememberResult(tab, profile.id);
-      if (typeof appLog !== 'undefined') appLog.success('popup', 'fill.done', `填入成功，${count} 个字段`);
-      updateLastUsed();
-    } else {
-      if (typeof appLog !== 'undefined') appLog.warn('popup', 'fill.empty', '本轮没有新增填入');
-      if (skippedCount > 0 && reviewCount === 0) {
-        showTaskFeedback('warning', '本轮没有新增填入；已有内容保持不变，缺失资料请手动补充');
-      } else if (reviewCount > 0) {
-        showTaskFeedback('warning', `没有新增填入，${reviewCount} 项待人工核对。可展开字段清单，或用资料速查逐项补填。`);
-      } else {
-        showTaskFeedback('warning', '未匹配到可填写的字段；可尝试「AI 助填」处理开放题，或用「选区填入」手动指定区域');
-      }
-    }
-  } catch (err) {
-    if (typeof appLog !== 'undefined') appLog.error('popup', 'fill.fail', '填入失败', err.message);
-    showTaskFeedback('error', '填入失败：' + friendlyTabError(err));
+    Sidebar.clearResult();
+    showTaskFeedback('loading', loadingText);
+    const request = { action: 'startSidePanelFill', requestId, url: tab.url, mode: mode || 'full', profile, ai,
+      completeRows: mode === 'incremental' && document.getElementById('incrementalAddRows')?.checked === true };
+    const { response } = await sendTabTaskWithReady(tab, request, TASK_ACK_TIMEOUT_MS);
+    if (!Sidebar.isCurrentPage(tab)) return;
+    if (!response?.accepted) showTaskFeedback('warning', response?.error || '网页助手版本已变更，请刷新该标签页。');
+    else Sidebar.verifyTask(tab, requestId);
+  } catch (error) {
+    if (tab && !Sidebar.isCurrentPage(tab)) return;
+    if (tab && error.reason === 'task-timeout') {
+      await Sidebar.verifyTask(tab, requestId);
+    } else showTaskFeedback('error', '填入失败：' + friendlyTabError(error));
   } finally {
-    btn.disabled = false;
+    btn.disabled = Sidebar.isTaskRunning();
   }
 }
 
-/** AI 助填：先快速填入，再逐题深度解析，超时放宽到 5 分钟 */
-async function runAiFillTask(btn) {
-  if (!currentProfile) {
-    showTaskFeedback('warning', '请先在「配置资料与简历」中完善简历资料');
+function runAiFillTask(btn) {
+  return runFillTask({ btn, ai: true, loadingText: '正在填入基础字段，随后处理开放题…' });
+}
+
+function showFillCompletion(tab, result) {
+  if (result.cancelled) {
+    showTaskFeedback('warning', '已取消填写。请核对网页上已经写入的内容。');
     return;
   }
-
-  const profile = currentProfile;
-  Sidebar.clearResult();
-  btn.disabled = true;
-  showTaskFeedback('loading', 'AI 助填进行中：先填标准字段，再逐题解析开放题（最长 5 分钟）…');
-  if (typeof appLog !== 'undefined') {
-    appLog.info('popup', 'ai.fill_start', '开始 AI 助填', { profile: currentProfile.name });
+  if (result.error) {
+    showTaskFeedback('error', '填入失败：' + result.error);
+    return;
   }
-
-  try {
-    const tab = await getActiveTab();
-
-    const outcome = await sendTabTaskWithReady(tab, {
-      action: 'aiStepByStepFill',
-      profile
-    }, AI_FILL_TIMEOUT_MS);
-    if (!Sidebar.isCurrentPage(tab)) return;
-    const response = outcome.response;
-
-    if (!response) {
-      showTaskFeedback('error', '页面没有返回 AI 助填结果，请刷新网页后重试');
-      return;
-    }
-    if (response.success === false) {
-      const detail = response.error || '未知错误';
-      if (typeof appLog !== 'undefined') appLog.error('popup', 'ai.fill_fail', 'AI 助填失败', detail);
-      showTaskFeedback('error', 'AI 助填失败：' + detail);
-      return;
-    }
-
-    const result = response.result || {};
-    if (result.cancelled) {
-      showTaskFeedback('warning', '已取消填写。请核对网页上已经写入的内容。');
-      return;
-    }
-    const count = result.filledCount ?? result.count ?? 0;
-    Sidebar.showDetails(tab, result);
-    if (count > 0) {
-      if (result.aiConfigured === false) {
-        showTaskFeedback('warning', `已填入 ${count} 个基础字段。需要处理开放题时，请先在设置中配置 AI。`);
-      } else {
-        showTaskFeedback('success', `AI 助填完成，共处理 ${count} 个字段`);
-      }
-      Sidebar.rememberResult(tab, profile.id);
-    } else {
-      showTaskFeedback('warning', 'AI 助填完成，但没有匹配到可处理的内容；请检查资料完整度与 API Key 配置');
-    }
-    updateLastUsed();
-  } catch (err) {
-    if (typeof appLog !== 'undefined') appLog.error('popup', 'ai.fill_fail', 'AI 助填失败', err.message);
-    showTaskFeedback('error', 'AI 助填失败：' + friendlyTabError(err));
-  } finally {
-    btn.disabled = false;
+  const count = result.filledCount || 0;
+  const pending = result.results || [];
+  const missing = pending.filter(row => row.reason === 'no_profile_value').length;
+  const personal = pending.filter(row => row.reason === 'manual_confirmation_required').length;
+  const details = [missing && `${missing} 项简历没有对应资料`, personal && `${personal} 项需本人确认`].filter(Boolean).join('，');
+  if (result.revision && !count) Sidebar.clearResult();
+  Sidebar.showDetails(tab, result);
+  if (count) {
+    Sidebar.rememberResult(tab, result.profileId);
+    const review = Math.max(result.manualFields?.length || 0, result.results?.length || 0);
+    let feedback = `已填入 ${count} 个字段`;
+    if (result.mode === 'incremental') feedback += '（仅补空白字段）';
+    if (review) feedback += `，另有 ${review} 项建议人工核对`;
+    if (details) feedback += `（其中${details}）`;
+    if (!result.undoable) feedback += '。如需还原控件选项，请在网页上修改。';
+    if (result.ai && result.aiConfigured === false) feedback += '。如需处理开放题，请在设置中配置 AI。';
+    showTaskFeedback('success', feedback);
+    updateLastUsed(result.profileId, result.completedAt);
+  } else if (result.results?.length) {
+    showTaskFeedback('warning', `没有新增填入，${pending.length} 项待人工核对${details ? '（其中' + details + '）' : ''}。可展开字段清单查看原因。`);
+  } else if (result.skippedCount) {
+    showTaskFeedback('warning', '本轮没有新增填入；已有内容保持不变。');
+  } else {
+    showTaskFeedback('warning', '未匹配到可填写的字段，请检查网页与简历资料。');
   }
 }
 
@@ -865,18 +810,17 @@ function formatTime(isoString) {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function updateLastUsed() {
-  if (!currentProfile) return;
-
-  const nowIso = new Date().toISOString();
-  currentProfile.lastUsedAt = nowIso;
+function updateLastUsed(profileId, timestamp) {
+  const used = allProfiles.find(profile => profile.id === profileId);
+  if (!used || !timestamp || (used.lastUsedAt && used.lastUsedAt >= timestamp)) return;
+  used.lastUsedAt = timestamp;
   const lastUsedEl = document.getElementById('lastUsed');
-  if (lastUsedEl) lastUsedEl.textContent = '刚刚';
+  if (lastUsedEl && currentProfile?.id === profileId) lastUsedEl.textContent = formatTime(timestamp);
 
   chrome.runtime.sendMessage({
     action: 'updateProfile',
-    profileId: currentProfile.id,
-    updates: { lastUsedAt: nowIso }
+    profileId,
+    updates: { lastUsedAt: timestamp }
   }, () => { if (chrome.runtime.lastError) {} });
 }
 
@@ -979,34 +923,6 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Read structured metadata in the active tab. The workbench confirms the draft before persisting.
-function readJobPosting() {
-  function plainText(value, max = 240) {
-    return typeof value === 'string' ? value.trim().slice(0, max) : '';
-  }
-  const postings = [];
-  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
-    try {
-      const items = [JSON.parse(script.textContent)].flat();
-      postings.push(...items.flatMap(item => [item, ...(Array.isArray(item?.['@graph']) ? item['@graph'] : [])])
-        .filter(item => [item?.['@type']].flat().includes('JobPosting')));
-    } catch {}
-  }
-  const job = postings.length === 1 ? postings[0] : {};
-  const address = [job.jobLocation].flat()[0]?.address;
-  const employmentTypes = { FULL_TIME: '全职', PART_TIME: '兼职', INTERN: '实习' };
-  const description = document.createElement('template');
-  description.innerHTML = plainText(job.description, 8000);
-  return {
-    pageUrl: location.href,
-    company: plainText(job.hiringOrganization?.name),
-    position: plainText(job.title || document.querySelector('meta[property="og:title"]')?.content || document.title),
-    location: typeof address === 'string' ? plainText(address) : [address?.addressRegion, address?.addressLocality].filter(Boolean).join(' '),
-    jobType: employmentTypes[[job.employmentType].flat()[0]] || '',
-    summary: plainText(description.content.textContent, 2000)
-  };
-}
-
 async function captureCurrentJob(event, result = null) {
   const button = event.currentTarget;
   button.disabled = true;
@@ -1017,8 +933,8 @@ async function captureCurrentJob(event, result = null) {
       throw new Error('刚才填写的是另一个页面，请切回原岗位再记录。');
     }
     if (!/^https?:\/\//.test(tab?.url || '')) throw new Error('请先打开招聘网页');
-    const details = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: readJobPosting })
-      .then(rows => rows[0]?.result).catch(() => null);
+    const details = await sendTabTaskWithReady(tab, { action: 'readJobPosting' }, 3000)
+      .then(outcome => outcome.response).catch(() => null);
     const active = await getActiveTab();
     if (tab.id !== active.id || tab.url !== active.url || (details && details.pageUrl !== tab.url)) {
       throw new Error('网页已经切换，请在岗位页面重新点「记录此岗位」。');
@@ -1034,7 +950,7 @@ async function captureCurrentJob(event, result = null) {
     await chrome.tabs.create({ url: chrome.runtime.getURL(`options/options.html?draft=${id}#tracker`) });
   } catch (error) {
     if (key) await chrome.storage.session.remove(key).catch(() => {});
-    showTaskFeedback('warning', error.message);
+    showToast(error.message, 'warning');
   } finally {
     button.disabled = false;
   }

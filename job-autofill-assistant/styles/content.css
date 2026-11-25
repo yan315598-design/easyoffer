@@ -1147,14 +1147,25 @@
 
 /* 11. 选区填入：框选经历区域 overlay + 条目选择面板（紫色系 #7c5cff） */
 #job-autofill-region-overlay {
-  position: fixed;
-  inset: 0;
+  position: fixed !important;
+  inset: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: none !important;
+  background: transparent !important;
   z-index: 2147483645;
   cursor: crosshair;
   user-select: none;
   -webkit-user-select: none;
   overflow: hidden;
 }
+
+#job-autofill-region-overlay::backdrop { background: transparent; }
 
 .job-autofill-region-shade {
   position: absolute;

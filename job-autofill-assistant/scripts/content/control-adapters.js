@@ -74,8 +74,9 @@ function setValue(element, value) {
   }
 
   const proto = tagName === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const previous = element.value;
   nativeSet(element, proto, valStr);
-  dispatchInputEvents(element, valStr);
+  dispatchInputEvents(element, valStr, previous);
   return element.value === valStr;
 }
 
@@ -98,6 +99,17 @@ function optionTextEquals(text, value) {
 }
 
 function fieldOptionEquals(label, text, value) {
+  if (/^(?:语言|外语|英语)等级$/.test(label)) {
+    const exam = languageExamKey(value);
+    if (exam) {
+      // A parenthesized abbreviation can repeat the same exam. Mixed exam names or components are ambiguous.
+      const names = term => String(term).normalize('NFKC').split(/[()]/).map(part => part.trim()).filter(Boolean);
+      return [text, value].every(term => {
+        const parts = names(term);
+        return parts.length && parts.every(part => LANGUAGE_EXAMS[exam].match.test(part));
+      });
+    }
+  }
   if (optionTextEquals(text, value)) return true;
   const shown = String(text || '').replace(/\s+/g, '');
   const wanted = String(value || '').replace(/\s+/g, '');
@@ -109,6 +121,10 @@ function fieldOptionEquals(label, text, value) {
     return !!type && type === bloodType(shown);
   }
   if (label === '民族') return shown.replace(/族$/, '') === wanted.replace(/族$/, '');
+  if (/^(?:获奖|奖项|奖励)级别$/.test(label)) {
+    return [['校级','院校级'], ['省级','省区级']].some(group => group.includes(shown) && group.includes(wanted));
+  }
+  if (/^(?:意向工作城市|学校所在城市)$/.test(label)) return shown.replace(/市$/, '') === wanted.replace(/市$/, '');
   if (/^(IT\s*)?技能(?:类别|名称)$/i.test(label)) {
     const aliases = { photoshop: 'ps', r: 'r语言', activx: 'activex', ciojure: 'clojure', deamweaver: 'dreamweaver', 'msoffice': 'office' };
     const key = value => aliases[value.toLowerCase()] || value.toLowerCase();
@@ -118,10 +134,9 @@ function fieldOptionEquals(label, text, value) {
     const mainlandId = text => /^(?:中国大陆|内地|大陆|中华人民共和国)?(?:居民)?身份证$/.test(text);
     return mainlandId(shown) && mainlandId(wanted);
   }
-  if (label === '政治面貌') {
-    const party = text => /^(?:中共党员|中国共产党党员|共产党员)$/.test(text);
-    const youth = text => /^(?:(?:中国)?共青团(?:团员|员)?|(?:中国)?共产主义青年团(?:团员)?|团员)$/.test(text);
-    return (party(shown) && party(wanted)) || (youth(shown) && youth(wanted));
+  if (label === '政治面貌' || label === '党派') {
+    const status = politicalMembership(wanted);
+    return !!status && status === politicalMembership(shown);
   }
   if (/^(国家(?:[/／]?地区)?|国籍|country(?:\/region)?)$/i.test(label)) {
     const mainland = value => /^(?:中国|中华人民共和国|中国大陆|中国内地|china|mainlandchina|cn)$/i.test(value);
@@ -268,12 +283,13 @@ async function fillSelectWidget(el, value, options) {
   const openTimeoutMs = typeof opts.openTimeoutMs === 'number' ? opts.openTimeoutMs : 1200;
   const tecTrigger = el.closest('.tec-select__trigger');
   const wait = (condition, timeoutMs = openTimeoutMs) =>
-    waitFor(condition, { timeoutMs, signal, task: opts.task, observe: tecTrigger || el.closest('.el-select') ? document.body : null });
+    waitFor(condition, { timeoutMs, signal, task: opts.task, observe: tecTrigger || el.closest('.el-select,.ant-select') ? document.body : null });
   if (el.disabled) {
     const enabled = await wait(() => !el.disabled && el.isConnected);
     if (!enabled) return false;
   }
   if (el.tagName === 'SELECT') return setValue(el, valStr);
+  if (el.closest('.phoenix-select')) return fillBeisenSelect(el, valStr, opts);
   if (el.closest('[class*="sd-Select-container-"]')) return fillMokaSelect(el, valStr, options);
   const session = beginWidgetDropdownSession();
 
@@ -322,10 +338,14 @@ async function fillSelectWidget(el, value, options) {
       hit = findHit();
       if (wrap.matches('.ant-select') && !dropdownOptions(el, panel).length) searchTimeoutMs *= 2;
     } else {
-      const holder = wrap.matches('.ant-select') &&
-        (await wait(() => visibleDropdownRoot(el)))?.querySelector('.rc-virtual-list-holder');
+      const antPanel = wrap.matches('.ant-select') && await wait(() => {
+        const panel = visibleDropdownRoot(el);
+        return panel?.querySelector('.ant-select-item-option') && panel;
+      });
+      if (wrap.matches('.ant-select') && !antPanel) return false;
+      const holder = antPanel && antPanel.querySelector('.rc-virtual-list-holder');
       hit = holder?.clientHeight && holder.scrollHeight > holder.clientHeight
-        ? await findAntVirtualOption(holder, findHit, session.isCurrent, opts) : await wait(findHit);
+        ? await findAntVirtualOption(holder, findHit, session.isCurrent, opts) : antPanel ? findHit() : await wait(findHit);
       if (!hit) return false;
     }
     if (!hit && canSearch) {
@@ -428,11 +448,13 @@ function dateValueMatches(input, expected, precision) {
   return !!expected?.[precision - 1] && expected.slice(0, precision).every((part, index) => shown?.[index] === part);
 }
 
-async function clickFillControl(node, opts) {
+async function clickFillControl(node, opts, stillValid) {
   if (!node) return false;
   await waitForFillCheckpoint(opts.task);
   if (opts.signal?.aborted || !node.isConnected || !isElementTrulyVisible(node)) return false;
-  node.click();
+  if (stillValid && !stillValid(node)) return false;
+  if (typeof node.click === 'function') node.click();
+  else node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
   return true;
 }
 
@@ -670,11 +692,23 @@ async function writeCompetitionName(input, value, options) {
   return input.value === candidate;
 }
 
+function isBeisenPlainText(input) {
+  return Boolean(input?.closest?.('.form-item--phoenix') &&
+    input.matches('textarea,input:not([type]),input[type=text],input[type=tel],input[type=email],input[type=number],input[type=url]') &&
+    !input.closest('.phoenix-select') && !isWidgetSelectTrigger(input) && !isBeisenDateInput(input) && !isBeisenRegionInput(input));
+}
+
 // 写入单个控件。options.signal（AbortSignal）用于任务/字段级取消，组件下拉路径全程可中断。
 async function fillField(el, value, options) {
   const target = writableBox(el) || el;
   if (!target) return false;
   target.removeAttribute('data-easyoffer-write-reason');
+  if (!dateControlPrecision(target) && isBeisenDateInput(target)) {
+    return !isIgnoredInput(target) && await fillBeisenDate(target, value, options);
+  }
+  if (isBeisenRegionInput(target)) {
+    return !isIgnoredInput(target) && isSmartFillWritableInnerInput(target) && await fillBeisenRegion(target, value, options);
+  }
   const written = await writeFieldControl(el, value, options);
   if (!written) return false;
   if (target === document.activeElement) target.blur();
@@ -712,6 +746,10 @@ function verifyFieldWrite(target, value, forceWidget = false) {
       return false;
     }
   }
+  if (isBeisenPlainText(target) && target.value.trim() !== String(value).trim()) {
+    target.setAttribute('data-easyoffer-write-reason', 'value_reset');
+    return false;
+  }
   if (target.getAttribute('aria-invalid') === 'true' || target.validity?.valid === false ||
       target.closest('.ant-form-item-has-error, .el-form-item.is-error, .tec-form-item.is-error')) {
     target.setAttribute('data-easyoffer-write-reason', 'validation_failed');
@@ -747,6 +785,7 @@ async function writeFieldControl(el, value, options) {
     return fillSelectWidget(target, valueToFill, options);
   }
   if (target.readOnly || target.disabled) return false;
+  if (isBeisenDocumentInput(target)) return writeBeisenDocumentNumber(target, valueToFill, options);
   if (target.tagName === 'INPUT' && getClosestLabelText(target) === '竞赛名称') {
     return writeCompetitionName(target, valueToFill, options);
   }
@@ -787,6 +826,7 @@ function isMonthControl(el) {
 async function fillSiteControl(input, value, options) {
   if (input.closest('.ant-form-item') && isXhsForm()) return fillXhsControl(input, value, options);
   if (isBeisenForm() && /^\d{4}-\d{2}(?:-\d{2})?$/.test(String(value)) && /日期|时间|年月/.test(getClosestLabelText(input))) return fillBeisenDate(input, value, options);
+  if (isBeisenRegionInput(input)) return fillBeisenRegion(input, value, options);
   if (input.closest('.phoenix-select') && isBeisenForm()) return fillBeisenSelect(input, value, options);
   const datePicker = input.closest('.phoenix-datePicker, .phoenix-datepicker, [class*="date-picker"], [class*="datePicker"]');
   if (datePicker) return false; // 未知日期组件不能把文本写入当成控件提交。
@@ -807,7 +847,7 @@ var  SMART_FILL_PLACEHOLDER_OPTION_RE = /^(请选择.*|请输入.*|please\s*sele
 var  SMART_FILL_PHONE_LABEL_RE = /手机|电话|mobile|phone|(?:^|[^a-z])tel\b/i;
 var  SMART_FILL_IDCARD_LABEL_RE = /身份证|idcard|identity/i;
 // 组件下拉（antd/Element/rc/semi/arco/Moka）容器选择器
-var  SMART_FILL_WIDGET_CONTAINER_SELECTOR = '.ant-select, .el-select, .rc-select, .semi-select, .arco-select, [class*="sd-Select-container-"]';
+var  SMART_FILL_WIDGET_CONTAINER_SELECTOR = '.ant-select, .el-select, .rc-select, .semi-select, .arco-select, .phoenix-select, [class*="sd-Select-container-"]';
 // 字段"行"容器：同一 label/单元格内的控件视为一组（级联/组合判定用）
 var  SMART_FILL_ROW_CONTAINER_SELECTOR = 'label, td, th, fieldset, li, [class*="form-item"], [class*="formItem"], ' +
   '[class*="FormItem"], [class*="form-field"], [class*="field-item"], [class*="apply-field-"], [class*="apply-item"]';
@@ -843,6 +883,9 @@ function isWidgetSelectTrigger(el) {
 
 // 组件下拉当前选中的值：取组件内 selection-item/所选文本，其次触发 input 的 value；占位符不算值
 function widgetSelectCurrentValue(el) {
+  if (el.tagName === 'SELECT') return el.value ? el.selectedOptions[0]?.text.trim() || '' : '';
+  const phoenix = el.closest?.('.phoenix-select');
+  if (phoenix) return beisenSelectCurrentValue(phoenix);
   if (el.matches('.tec-select__input, .tec-cascade__input')) return tecSelectedLabel(el);
   const wrap = el.closest?.(SMART_FILL_WIDGET_CONTAINER_SELECTOR) || smartWidgetHeuristicShell(el) || el;
   let item = null;

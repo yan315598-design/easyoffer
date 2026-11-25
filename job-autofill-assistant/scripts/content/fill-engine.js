@@ -8,6 +8,85 @@
 'use strict';
 
 var activeFillTask = null;
+var lastFillUndo = null;
+var FILL_DIALOG_SELECTOR = 'dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"], .el-overlay-dialog, .ant-modal-wrap';
+
+function visibleFillDialogs() {
+  const dialogs = document.querySelectorAll(FILL_DIALOG_SELECTOR);
+  return [...dialogs].filter(dialog => {
+    if (!dialog.isConnected || !isElementTrulyVisible(dialog) ||
+        dialog.closest('.ant-picker-dropdown, .el-picker-panel, [id^="job-autofill-"]')) return false;
+    const rect = dialog.getBoundingClientRect();
+    if (!(rect.top < innerHeight && rect.left < innerWidth && rect.bottom > 0 && rect.right > 0)) return false;
+    return dialog.matches('dialog:modal, [aria-modal="true"], [role="alertdialog"], .el-overlay-dialog, .ant-modal-wrap') ||
+      (rect.left <= innerWidth / 2 && rect.right >= innerWidth / 2 && rect.top <= innerHeight / 2 && rect.bottom >= innerHeight / 2) ||
+      /登录|登入|验证|确认|sign\s*in/i.test(dialog.getAttribute('aria-label') || '');
+  });
+}
+
+function checkFillDialogs(task) {
+  if (task.url && task.url !== location.href && activeFillTask === task) {
+    cancelActiveFillTask();
+    return;
+  }
+  if (!task.initialDialogs || task.paused || task.controller.signal.aborted) return;
+  const blocking = visibleFillDialogs().find(dialog => !task.initialDialogs.has(dialog) ||
+    /登录|登入|验证码|身份验证|sign\s*in/i.test(dialog.getAttribute('aria-label') || dialog.querySelector('h1,h2,h3,[role="heading"]')?.textContent || ''));
+  if (blocking) {
+    task.blockingDialog = blocking;
+    pauseActiveFillTask();
+  }
+}
+
+function reportFillField(task, input, label) {
+  if (!task || !input || task.visited.has(input)) return;
+  task.visited.add(input);
+  task.done++;
+  task.total = Math.max(task.total, task.done);
+  task.currentLabel = label || '';
+  if (typeof publishSidePanelTask === 'function') publishSidePanelTask();
+}
+
+function recordFillTextWrite(input, previous, written) {
+  const history = activeFillTask?.undo;
+  if (!history || previous === written || !input.matches?.('textarea, input:not([type]), input:is([type="text"], [type="tel"], [type="email"], [type="url"], [type="number"])') ||
+      input.closest('[role="combobox"], .ant-select, .ant-picker, .el-select, .el-cascader, .el-date-editor, .phoenix-select, .phoenix-search, .tec-select, [id^="job-autofill-"]')) return;
+  const existing = history.get(input);
+  if (existing && existing.written === previous) existing.written = written;
+  else history.set(input, { previous, written, background: input.style.backgroundColor, outline: input.style.outline });
+}
+
+function restoreLegacyBeisenTextHighlights(batch) {
+  for (const [input, entry] of batch?.entries || []) {
+    if (!isBeisenPlainText(input) || !input.isConnected) continue;
+    // Older versions recorded the original inline styles in their undo journal.
+    if (input.style.backgroundColor === 'rgb(232, 245, 233)' && typeof entry.background === 'string') {
+      input.style.backgroundColor = entry.background;
+    }
+    if (input.style.outline.includes('rgb(76, 175, 80)') && typeof entry.outline === 'string') {
+      input.style.outline = entry.outline;
+    }
+  }
+}
+
+function undoFillText(taskId) {
+  const batch = lastFillUndo;
+  if (activeFillTask?.running || !batch || batch.id !== taskId || batch.url !== location.href) {
+    return { success: false, error: '这轮填写已失效，请核对当前网页。' };
+  }
+  lastFillUndo = null;
+  let restored = 0;
+  for (const [input, entry] of batch.entries) {
+    if (!input.isConnected || input.disabled || input.readOnly || input.value !== entry.written) continue;
+    nativeSet(input, input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, entry.previous);
+    dispatchInputEvents(input, entry.previous, entry.written);
+    if (input.value !== entry.previous) continue;
+    if (input.style.backgroundColor === 'rgb(232, 245, 233)') input.style.backgroundColor = entry.background;
+    if (input.style.outline.includes('rgb(76, 175, 80)')) input.style.outline = entry.outline;
+    restored++;
+  }
+  return { success: true, restored, kept: batch.entries.size - restored };
+}
 
 function syncFillTaskControls() {
   if (typeof syncYanyuTaskControls === 'function') syncYanyuTaskControls();
@@ -17,6 +96,7 @@ function syncFillTaskControls() {
 function startActiveFillTask(kind, mode) {
   if (activeFillTask?.running) return null;
   const task = {
+    id: globalThis.crypto?.randomUUID?.() || String(Date.now()) + Math.random(),
     running: true,
     paused: false,
     kind: kind || 'fill',
@@ -27,9 +107,36 @@ function startActiveFillTask(kind, mode) {
     pausedMs: 0,
     pauseStartedAt: 0,
     lastYieldAt: Date.now(),
-    stage: 'init'
+    stage: 'init',
+    visited: new WeakSet(), done: 0, total: 0, currentLabel: ''
   };
   activeFillTask = task;
+  if (task.kind === 'fill' || task.kind === 'ai') {
+    restoreLegacyBeisenTextHighlights(lastFillUndo);
+    lastFillUndo = null;
+    task.undo = new Map();
+    task.url = location.href;
+    if (typeof contentMainState !== 'undefined') {
+      if (contentMainState.panelRun?.completion) contentMainState.panelRun = null;
+      task.total = contentMainState.lastPageSummary?.fillableCount || 0;
+    }
+    task.initialDialogs = new Set(visibleFillDialogs());
+    task.onNavigate = () => {
+      if (task.url !== location.href && activeFillTask === task) cancelActiveFillTask();
+    };
+    globalThis.navigation?.addEventListener('currententrychange', task.onNavigate);
+    if (typeof MutationObserver === 'function' && document.body) {
+      const containsDialog = node => node.nodeType === 1 &&
+        (node.matches(FILL_DIALOG_SELECTOR) || Boolean(node.querySelector(FILL_DIALOG_SELECTOR)));
+      task.dialogObserver = new MutationObserver(changes => {
+        if (changes.some(change => change.type === 'attributes' ? containsDialog(change.target)
+          : [...change.addedNodes].some(containsDialog))) checkFillDialogs(task);
+      });
+      task.dialogObserver.observe(document.body, { childList: true, subtree: true, attributes: true,
+        attributeFilter: ['open', 'hidden', 'role', 'aria-label', 'aria-modal', 'aria-hidden', 'class', 'style'] });
+    }
+    checkFillDialogs(task);
+  }
   syncFillTaskControls();
   return task;
 }
@@ -58,8 +165,11 @@ function pauseActiveFillTask() {
 
 function resumeActiveFillTask() {
   if (!activeFillTask?.running) return false;
+  if (activeFillTask.blockingDialog && visibleFillDialogs().includes(activeFillTask.blockingDialog)) return false;
+  activeFillTask.blockingDialog = null;
   releaseFillTaskPause(activeFillTask);
-  return true;
+  checkFillDialogs(activeFillTask);
+  return !activeFillTask.paused;
 }
 
 function toggleActiveFillPause() {
@@ -68,17 +178,22 @@ function toggleActiveFillPause() {
 
 async function waitForFillCheckpoint(task) {
   if (!task) return;
+  if (task.url && task.url !== location.href) task.controller.abort();
   throwIfFillCancelled(task.controller.signal);
   if (Date.now() - task.lastYieldAt >= 16) {
     await sleep(0);
     task.lastYieldAt = Date.now();
   }
   while (task.paused && task.pausePromise) await task.pausePromise;
+  if (task.url && task.url !== location.href) task.controller.abort();
   throwIfFillCancelled(task.controller.signal);
 }
 
 function finishActiveFillTask(task) {
   if (!task) return;
+  task.dialogObserver?.disconnect();
+  if (task.onNavigate) globalThis.navigation?.removeEventListener('currententrychange', task.onNavigate);
+  if (task.undo?.size) lastFillUndo = { id: task.id, url: task.url, entries: task.undo };
   releaseFillTaskPause(task);
   task.running = false;
   if (activeFillTask === task) activeFillTask = null;
@@ -102,7 +217,7 @@ function cancelActiveFillTask() {
 }
 
 function fillResultEntry(input, detection, status, reason, value) {
-  return {
+  const row = {
     element: input || null,
     fieldType: detection?.fieldType || '',
     label: getClosestLabelText(input) || input?.placeholder || input?.name || detection?.fieldType || '未命名字段',
@@ -112,6 +227,8 @@ function fillResultEntry(input, detection, status, reason, value) {
     reason: reason || '',
     value
   };
+  const item = input?.closest?.('.form-item--phoenix') || activeFillTask?.beisenOriginalItems?.get(input);
+  return item ? beisenRememberResult(row, activeFillTask?.beisenProofForms, item) : row;
 }
 
 async function fillForm(profile, options) {
@@ -135,6 +252,9 @@ async function fillForm(profile, options) {
   let filledCount = 0;
   const results = [];
   const attemptedFields = new WeakSet();
+  const siteFields = new WeakSet();
+  const pendingDocumentNumbers = [];
+  let siteResult;
   const processedRanges = new WeakSet();
   const recheckFields = new Map();
   const home = familyResidence(profile.basicInfo);
@@ -156,27 +276,18 @@ async function fillForm(profile, options) {
     throwIfFillCancelled(signal);
     task.stage = 'site';
     await waitForFillCheckpoint(task);
-    if (isBeisenForm()) {
-      const siteResult = await fillBeisenForm(profile, { ...opts, signal, mode, task });
-      if (typeof showYanyuTaskResult === 'function') showYanyuTaskResult({
-        ...siteResult,
-        results: siteResult.fieldResults || siteResult.results || [],
-        reviewCount: siteResult.reviewCount ?? siteResult.manualFields?.length ?? 0
-      });
-      return siteResult;
-    }
-    if (isXhsForm()) {
-      const siteResult = await fillXhsForm(profile, { ...opts, signal, mode, task });
-      if (typeof showYanyuTaskResult === 'function') showYanyuTaskResult({
-        ...siteResult,
-        results: siteResult.fieldResults || siteResult.results || [],
-        reviewCount: siteResult.reviewCount ?? siteResult.manualFields?.length ?? 0
-      });
-      return siteResult;
+    const siteFill = isBeisenForm() ? fillBeisenForm : isXhsForm() ? fillXhsForm : null;
+    if (siteFill) {
+      siteResult = await siteFill(profile, { ...opts, signal, mode, task, attemptedFields: siteFields,
+        deferDocumentNumber: record => pendingDocumentNumbers.push(record),
+        deferVerification: (field, until) => recheckFields.set(field, until),
+        onField: (input, label) => reportFillField(task, input, label) });
+      filledCount += siteResult.filledCount;
+      results.push(...(siteResult.fieldResults || siteResult.results || []));
     }
 
     // 1. 优先检查当前是否处于 HR 聊天/沟通框界面
-    const chatInput = findChatInputElement();
+    const chatInput = !siteFill && findChatInputElement();
     if (chatInput) {
       const posName = detectPositionName(profile) || profile?.jobIntention?.expectedPosition || '应聘岗位';
       const compName = detectCompanyName() || '';
@@ -219,12 +330,15 @@ async function fillForm(profile, options) {
   const unmappedFields = [];
   for (const input of fields) {
     await waitForFillCheckpoint(task);
+    if (pendingDocumentNumbers.length && isBeisenDocumentInput(input)) siteFields.add(input);
+    if (siteFields.has(input)) attemptedFields.add(input);
     const detection = detectField(input);
     if (detection) detectedFields.push({ input, detection });
     else if (input.closest('[class*="form-item"],fieldset,[data-profile-section]') &&
       !isIgnoredInput(input) && getClosestLabelText(input)) unmappedFields.push(input);
   }
   const matchedTypes = detectedFields.map(({ detection }) => detection.fieldType);
+  task.total = task.done + detectedFields.filter(({ input }) => !task.visited.has(input)).length;
   const offerLinkEntries = collectOfferLinkCardEntries(profile, detectedFields);
   const hasSeparateProjResp = matchedTypes.includes('projectResponsibilities');
   const hasSeparateProjAchieve = matchedTypes.includes('projectAchievements');
@@ -304,14 +418,16 @@ async function fillForm(profile, options) {
     throwIfFillCancelled(signal);
     try {
       if (!input.isConnected || isIgnoredInput(input)) continue;
+      const phoenixItem = input.closest('.form-item--phoenix');
+      if (phoenixItem) (task.beisenOriginalItems ||= new WeakMap()).set(input, phoenixItem);
       if (binding) attemptedFields.add(input);
       if (detection.confidence < FIELD_WRITE_MIN_CONFIDENCE) {
-        results.push(fillResultEntry(input, detection, 'needs_review', 'low_confidence'));
+        if (!siteFields.has(input)) results.push(fillResultEntry(input, detection, 'needs_review', 'low_confidence'));
         continue;
       }
       const fieldType = detection.fieldType;
       const range = binding?.entry && /^(startDate|endDate)$/.test(binding.key) && input.closest('.ant-picker-range');
-      if (range) {
+      if (range && !siteFields.has(input)) {
         if (processedRanges.has(range)) continue;
         processedRanges.add(range);
         const endpoints = ['startDate', 'endDate'].map(key => binding.row.fields.find(field => field.key === key && range.contains(field.input)));
@@ -333,7 +449,7 @@ async function fillForm(profile, options) {
         results.push(fillResultEntry(input, detection, 'needs_review', 'range_not_committed'));
         continue;
       }
-      if (input.type === 'radio') {
+      if (input.type === 'radio' && !siteFields.has(input)) {
         if (handledRadios.has(input)) continue;
         for (const radio of radioGroup(input)) handledRadios.add(radio);
       }
@@ -361,6 +477,8 @@ async function fillForm(profile, options) {
       if (seenPatentNames > 0) currentPatentIdx++;
       seenPatentNames++;
     }
+
+      if (siteFields.has(input)) continue;
 
       const preserveExisting = binding || input.type !== 'checkbox' &&
         (input.type !== 'radio' || incremental || input.closest('.tec-radio-group'));
@@ -976,8 +1094,10 @@ async function fillForm(profile, options) {
             clearManualHint(input);
             const confirmedValue = getClosestLabelText(input) === '竞赛名称' ? input.value : valueToFill;
             results.push(fillResultEntry(input, detection, 'filled', '', confirmedValue));
-            input.style.backgroundColor = '#e8f5e9';
-            input.style.outline = '2px solid #4caf50';
+            if (!input.closest('.form-item--phoenix')) {
+              input.style.backgroundColor = '#e8f5e9';
+              input.style.outline = '2px solid #4caf50';
+            }
           } else {
             const reason = input.getAttribute('data-easyoffer-write-reason') ||
               (/请确认(?:具体|完整)日期/.test(input.getAttribute('data-job-autofill-manual') || '') ? 'date_precision_required' : 'write_failed_or_option_not_found');
@@ -995,6 +1115,8 @@ async function fillForm(profile, options) {
       if (typeof appLog !== 'undefined') {
         appLog.warn('content', 'fill.field_error', `单字段失败，继续后续字段: ${detection?.fieldType || 'unknown'}`, error?.message || String(error));
       }
+    } finally {
+      reportFillField(task, input, getClosestLabelText(input) || detection?.fieldType);
     }
   }
 
@@ -1015,32 +1137,102 @@ async function fillForm(profile, options) {
     results.push(fillResultEntry(null, null, 'failed', `扩展字段：${error?.message || error}`));
   }
   for (const input of unmappedFields) {
-    if (input.isConnected && !fieldHasValue(input)) {
+    if (!siteFields.has(input) && input.isConnected && !fieldHasValue(input)) {
       results.push(fillResultEntry(input, null, 'needs_review', 'unrecognized_field'));
     }
   }
+  let attachmentNotes = [];
   if (!incremental) {
     await waitForFillCheckpoint(task);
     try {
-      await handleResumeUpload(profile);
+      attachmentNotes = await handleResumeUpload(profile, { task, signal, results }) || [];
     } catch (error) {
       if (error?.name === 'AbortError') throw error;
       results.push(fillResultEntry(null, null, 'failed', `附件：${error?.message || error}`));
     }
   }
 
+  // Other Phoenix edits rerender the whole form. Enter the number after those edits
+  // have finished and verify that the composite editor has accepted it.
+  for (const record of pendingDocumentNumbers) {
+    await waitForFillCheckpoint(task);
+    throwIfFillCancelled(signal);
+    const {element: input, label, value, type} = record;
+    const item = beisenCurrentItem(record, {});
+    const target = item?.querySelector('input:not([type="hidden"])');
+    const row = fillResultEntry(target || input, { fieldType: label }, 'needs_review', 'control_replaced', value);
+    if (target?.isConnected && isBeisenDocumentInput(target)) {
+      const currentType = target.closest('.form-item--phoenix').querySelector('.mobile-type-button .phoenix-button__content')?.textContent.trim();
+      if (currentType !== type) row.reason = 'document_type_mismatch';
+      else if (fieldHasValue(target) && target.value !== String(value).trim()) Object.assign(row, {status: 'skipped_has_value', reason: ''});
+      else {
+        try {
+          const alreadyPresent = Boolean(target.value);
+          if (await fillField(target, value, { signal, task })) {
+            Object.assign(row, {status: alreadyPresent ? 'skipped_has_value' : 'filled', reason: ''});
+            beisenRememberResult(row, task.beisenProofForms);
+            if (alreadyPresent) {
+              const proof = beisenResultProofs.get(row);
+              proof.expected = String(value).trim();
+              proof.retained = true;
+            }
+            recheckFields.set(target, Date.now() + 320);
+            if (!alreadyPresent) filledCount++;
+          } else row.reason = target.getAttribute('data-easyoffer-write-reason') || 'beisen_text_unconfirmed';
+        } catch (error) {
+          if (error?.name === 'AbortError') throw error;
+          row.reason = 'beisen_text_unconfirmed';
+        }
+      }
+    }
+    results.push(row);
+  }
   if (recheckFields.size) {
     const remaining = Math.max(...recheckFields.values()) - Date.now();
     if (remaining > 0) await sleep(remaining);
     await waitForFillCheckpoint(task);
   }
+  const beisenCache = {};
+  const byItem = new Map();
+  const duplicates = new Set();
   for (const row of results) {
+    const proof = beisenResultProofs.get(row);
+    if (proof) {
+      const item = beisenCurrentItem(proof, beisenCache);
+      if (row.status === 'filled' || proof.retained) {
+        const reason = beisenResultStatus(proof, item);
+        if (reason) {
+          if (row.status === 'filled') filledCount--;
+          row.status = 'needs_review';
+          row.reason = reason;
+        }
+      }
+      // Site and generic passes can encounter different DOM nodes for one logical field.
+      {
+        const key = item || proof.item;
+        const previous = byItem.get(key);
+        if (previous) {
+          // Prefer a verified write or its specific rollback over a secondary scan.
+          const discard = beisenResultRank(row) <= beisenResultRank(previous) ? row : previous;
+          duplicates.add(discard);
+          if (discard.status === 'filled') filledCount--;
+          if (discard === row) continue;
+        }
+        byItem.set(key, row);
+      }
+      continue;
+    }
     if (row.status !== 'filled' || !recheckFields.has(row.element) || verifyFieldWrite(row.element, row.value)) continue;
     row.status = 'needs_review';
     row.reason = row.element.getAttribute('data-easyoffer-write-reason') || 'value_reset';
-    row.element.style.removeProperty('outline');
-    row.element.style.removeProperty('background-color');
+    if (!isBeisenPlainText(row.element)) {
+      row.element.style.removeProperty('outline');
+      row.element.style.removeProperty('background-color');
+    }
     filledCount--;
+  }
+  for (let i = results.length - 1; i >= 0; i--) {
+    if (duplicates.has(results[i])) results.splice(i, 1);
   }
 
   console.log(`[易offer] 填充完成: ${filledCount} 个字段`);
@@ -1052,7 +1244,9 @@ async function fillForm(profile, options) {
   // 显示通知
   const manualFields = [...new Set([...document.querySelectorAll('[data-job-autofill-manual]')]
     .map(el => el.getAttribute('data-job-autofill-manual')))];
-  if (structureResult?.manual?.length) manualFields.push(...structureResult.manual);
+  for (const note of [...(siteResult?.manualFields || []), ...(structureResult?.manual || []), ...attachmentNotes]) {
+    if (!manualFields.includes(note)) manualFields.push(note);
+  }
   const reviewTotal = results.filter(item => item.status === 'needs_review' || item.status === 'failed').length;
   let message = `已自动填充 ${filledCount} 个字段`;
   if (manualFields.length) message += ` · 请手动选择：${manualFields.join('、')}`;
@@ -1063,6 +1257,7 @@ async function fillForm(profile, options) {
   const summary = {
     filledCount,
     results,
+    ...(siteResult && { isForm: true, fieldResults: results }),
     manualFields,
     mode,
     cancelled: signal.aborted,
@@ -1076,7 +1271,7 @@ async function fillForm(profile, options) {
   return summary;
   } finally {
     if (ownsTask) finishActiveFillTask(task);
-    dismissOpenDropdownPanels();
+    if (!task.blockingDialog) dismissOpenDropdownPanels();
   }
 }
 
@@ -1085,7 +1280,7 @@ var  JUNK_COMPANY_RE = /^(校园招聘|校招|社招|社会招聘|招聘官网|�
 var  JUNK_POSITION_RE = /^(工作职责|岗位职责|任职要求|任职资格|岗位要求|职位描述|职位详情|投递信息|基本信息|个人信息|教育背景|工作经历|项目经历|荣誉奖励|附件简历|求职意向|账号设置|个人中心|申请表单|申请信息|填写信息|校园招聘|校招|社会招聘|登录|注册|首页|网申|校招首页|工作地点|工作城市|工作性质|工作经验|所属部门|所属业务线|职位类别|职位类型|职位方向|招聘人数|发布时间|更新时间|薪资待遇|薪酬范围|学历要求|招聘对象|投递岗位|申请职位|应聘职位|应聘岗位|目标职位|选择职位|立即申请|立即投递|投递简历|投递表单|简历预览|简历填写|查看更多|返回列表|暂无职位|暂无数据|职位列表|全部职位|搜索职位|招聘动态|招聘公告|关于我们|加入我们|人才招聘|招聘系统|海外招聘|内推专区|职位名称|岗位名称)$/i;
 var  KNOWN_COMPANIES = [
   { match: /37\.com|37wan|\/37\/|37interactive|三七/i, name: '三七互娱' },
-  { match: /tencent|\/tencent\//i, name: '腾讯' },
+  { match: /tencent|\/tencent\/|^join\.qq\.com$/i, name: '腾讯' },
   { match: /bytedance|douyin|\/bytedance\//i, name: '字节跳动' },
   { match: /alibaba|aliyun|taobao|tmall|\/alibaba\//i, name: '阿里巴巴' },
   { match: /meituan|\/meituan\//i, name: '美团' },
@@ -1145,23 +1340,21 @@ function looksLikePosition(text) {
   return true;
 }
 
-function readJsonLdJob() {
+function readJsonLdJob(unique = false) {
+  const postings = [];
   const scripts = document.querySelectorAll('script[type="application/ld+json"]');
   for (const s of scripts) {
     try {
       const data = JSON.parse(s.textContent || 'null');
-      const items = Array.isArray(data) ? data : [data, data && data['@graph']].flat().filter(Boolean);
+      const items = [data].flat().flatMap(item => [item, ...([item?.['@graph']].flat().filter(Boolean))]);
       for (const item of items) {
-        if (item && (item['@type'] === 'JobPosting' || /JobPosting/i.test(String(item['@type'] || '')))) {
-          return {
-            position: String(item.title || '').trim(),
-            company: String(item.hiringOrganization?.name || '').trim()
-          };
-        }
+        if ([item?.['@type']].flat().some(type => /(?:^|\/)JobPosting$/i.test(type))) postings.push(item);
       }
     } catch {}
   }
-  return null;
+  if (!postings.length || (unique && postings.length !== 1)) return null;
+  const job = postings[0];
+  return { position: String(job.title || '').trim(), company: String(job.hiringOrganization?.name || '').trim(), job };
 }
 
 function readPositionFromMeta() {
@@ -1242,7 +1435,7 @@ function readPositionFromFormInputs() {
   return null;
 }
 
-function readPositionFromBreadcrumbs() {
+function readPositionFromBreadcrumbs(keepTitle = false) {
   try {
     const crumbContainers = document.querySelectorAll('.breadcrumb, .breadcrumbs, .ant-breadcrumb, .el-breadcrumb, .arco-breadcrumb, .semi-breadcrumb, [class*="breadcrumb" i], [class*="Breadcrumb"]');
     for (const container of crumbContainers) {
@@ -1251,8 +1444,10 @@ function readPositionFromBreadcrumbs() {
       if (items.length > 1) {
         for (let i = items.length - 1; i >= 0; i--) {
           const text = cleanPositionName(items[i].textContent);
-          if (looksLikePosition(text) && (JOB_TITLE_HINT.test(text) || text.length <= 24)) {
-            return text;
+          if (!items[i].children.length && looksLikePosition(text) &&
+              !/^(?:投递简历|填写简历|提交志愿|职位申请|职位列表|岗位列表)$/.test(text) &&
+              (JOB_TITLE_HINT.test(text) || text.length <= 24)) {
+            return keepTitle ? items[i].textContent.trim() : text;
           }
         }
       }
@@ -1425,4 +1620,54 @@ function cacheJobMetaFromPage() {
   if ((position && position !== '未知岗位' && position !== '网申岗位') || (company && company !== '未知企业')) {
     saveJobMeta({ company, position });
   }
+}
+
+// Build a reviewable draft from this document. Session-cached jobs and the
+// applicant's previous positions may belong to a different opening.
+function readJobPosting() {
+  const plain = (value, max = 240) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+  const job = readJsonLdJob(true)?.job || {};
+  const host = location.hostname.toLowerCase();
+  const title = plain(document.querySelector('meta[property="og:title"]')?.content || document.title);
+  const companyTitle = document.title.split(/[|｜–—]/).map(part =>
+    part.match(/^\s*(.{2,40}?)\s*[-·]?\s*(?:校园招聘|社会招聘|招聘官网|人才招聘)(?:官网)?\s*$/)?.[1]?.trim())
+    .find(name => name && !/^\d+(?:届|年)?$/.test(name) && !JUNK_COMPANY_RE.test(name));
+  const org = document.querySelector('[itemprop="hiringOrganization"], .company-name, [data-company-name]');
+  const company = plain(job.hiringOrganization?.name) || KNOWN_COMPANIES.find(entry => entry.match.test(host))?.name ||
+    plain(org?.getAttribute('data-company-name') || org?.getAttribute('content') || org?.textContent) || plain(companyTitle);
+  const positionLabel = /^(?:职位|岗位|应聘职位|应聘岗位|申请职位|申请岗位|目标职位|职位名称|岗位名称)[：:]?$/;
+  const fieldsets = [...document.querySelectorAll('.ant-form-item, .el-form-item, .form-group, label')];
+  const groupLabel = group => (group.querySelector('label, .ant-form-item-label, .el-form-item__label') ||
+    (group.tagName === 'LABEL' ? group : null))?.textContent.replace(/[*＊\s]/g, '') || '';
+  const assignedPosition = fieldsets.filter(group => positionLabel.test(groupLabel(group)))
+    .map(group => group.querySelector('input[readonly], input[disabled]')?.value).find(Boolean);
+  const heading = [...document.querySelectorAll('h1')].find(node => {
+    const text = plain(node.textContent);
+    return looksLikePosition(text) && !/招聘$|提交志愿|申请表|简历/.test(text);
+  });
+  const position = plain(job.title || readPositionFromBreadcrumbs(true) || assignedPosition ||
+    readPositionFromStructuredDom() || heading?.textContent || readPositionFromFormInputs() || readPositionFromMeta() || title);
+
+  const addresses = [job.jobLocation].flat().map(place => {
+    const address = place?.address;
+    return typeof address === 'string' ? address : [...new Set([address?.addressRegion, address?.addressLocality].filter(Boolean))].join(' ');
+  }).filter(Boolean);
+  const locationNode = document.querySelector('[itemprop="jobLocation"], [data-job-location], .job-location, .job-city, [class*="jobLocation"], [class*="position-location"]');
+  const header = document.querySelector('.job-header, .job-detail-header, .job-banner, [class*="jobHeader"], [class*="JobHeader"]');
+  // A generic title block may contain the metadata line directly below its h1.
+  const nearTitle = heading?.parentElement;
+  const headerText = plain(header?.innerText || (nearTitle?.innerText.length < 450 ? nearTitle.innerText : ''), 1000);
+  const labelledCity = headerText.match(/工作(?:地点|城市)\s*[:：]\s*([^|｜\n；;]{1,60})/)?.[1];
+  const cities = headerText.match(/北京|上海|深圳|杭州|广州|成都|武汉|西安|南京|合肥|苏州|重庆|天津|厦门|长沙|青岛|大连|郑州|济南|东莞|佛山|珠海|全国|远程/g);
+  const locationField = fieldsets.find(group => /^(?:工作地点|工作城市|意向工作城市)[：:]?$/.test(groupLabel(group)));
+  const selected = locationField?.querySelector('select option:checked, .ant-select-selection-item, .el-select__selected-item:not(.is-transparent)');
+  const selectedCity = plain(selected?.textContent || locationField?.querySelector('input:not([role="combobox"]):not([type="search"])')?.value);
+  const locationText = [...new Set(addresses)].join('、') ||
+    plain(locationNode?.getAttribute('data-job-location') || locationNode?.getAttribute('content') || locationNode?.textContent) ||
+    plain(labelledCity) || (cities ? [...new Set(cities)].join('、') : '') || (/请选择|选择城市/.test(selectedCity) ? '' : selectedCity);
+  const description = document.createElement('template');
+  description.innerHTML = plain(job.description, 8000);
+  const employmentTypes = { FULL_TIME: '全职', PART_TIME: '兼职', INTERN: '实习' };
+  return { pageUrl: location.href, company, position, location: plain(locationText),
+    jobType: employmentTypes[[job.employmentType].flat()[0]] || '', summary: plain(description.content.textContent, 2000) };
 }

@@ -172,10 +172,10 @@ function resetDropdownSessions() {
   dropdownPanelOwners = new WeakMap();
 }
 
-function dispatchInputEvents(element, value) {
+function dispatchInputEvents(element, value, previousValue = '') {
   const valStr = String(value);
   if (element._valueTracker) {
-    try { element._valueTracker.setValue(''); } catch {}
+    try { element._valueTracker.setValue(previousValue); } catch {}
   }
   try {
     element.dispatchEvent(new InputEvent('input', {
@@ -192,12 +192,14 @@ function dispatchInputEvents(element, value) {
 }
 
 function nativeSet(element, proto, value) {
+  const previous = element.value;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (element._valueTracker) {
     try { element._valueTracker.setValue(element.value); } catch {}
   }
   if (setter) setter.call(element, String(value));
   else element.value = String(value);
+  if (typeof recordFillTextWrite === 'function') recordFillTextWrite(element, previous, element.value);
 }
 
 function writableBox(el) {
@@ -240,7 +242,7 @@ function cleanLabel(raw) {
 function getClosestLabelText(input) {
   try {
     const phoenix = input.closest('.form-item--phoenix');
-    if (phoenix) return cleanLabel(phoenix.querySelector('.form-item__title')?.textContent);
+    if (phoenix) return beisenLabel(phoenix);
     const mokaField = input.closest('[class*="apply-field-"]');
     if (isMokaForm() && mokaField) {
       return cleanLabel(mokaField.querySelector('[class^="title-"]')?.textContent);
@@ -783,7 +785,7 @@ function isIgnoredInput(element, features) {
   if (element.closest('#job-autofill-dock, #job-autofill-copy-panel, #job-autofill-ai-panel, #job-autofill-log-panel, #job-autofill-region-overlay, #job-autofill-region-panel')) {
     return true;
   }
-  if (element.closest('.el-cascader__dropdown, .tec-cascade__popper, .tec-select__popper')) return true;
+  if (element.closest('.el-cascader__dropdown, .tec-cascade__popper, .tec-select__popper, .phoenix-selectList, .constant-main-selector-container')) return true;
 
   const type = (element.type || '').toLowerCase();
   if (type === 'password' || type === 'hidden') return true;
@@ -910,7 +912,7 @@ function fieldHasValue(el) {
   if (el.type === 'checkbox') return !!questionContainer(el).querySelector('input:checked, [aria-checked="true"], .phoenix-radio--checked, .ant-radio-wrapper-checked');
   if (el.matches('.tec-select__input, .tec-cascade__input')) return !!tecSelectedLabel(el);
   const phoenix = el.closest('.phoenix-select');
-  if (phoenix) return !!phoenix.querySelector('.phoenix-select__tipEle')?.textContent.trim();
+  if (phoenix) return Boolean(beisenSelectCurrentValue(phoenix));
   if (el.isContentEditable) return !!(el.textContent || '').trim();
   const mokaSelect = el.closest('[class*="sd-Select-container-"]');
   if (mokaSelect) return !!mokaSelect.querySelector('[class*="sd-Input-display-value-"]')?.textContent.trim();

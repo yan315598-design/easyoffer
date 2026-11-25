@@ -97,7 +97,7 @@
     try {
       var first = await ctx.sendPing();
       if (first && first.success && first.ready) {
-        return { ok: true, recovered: false, version: first.version };
+        return { ok: true, recovered: false, version: first.version, pageSummary: first.pageSummary };
       }
       pingError = new Error('contentPing 返回无效响应');
     } catch (err) {
@@ -121,7 +121,7 @@
       try {
         var retry = await ctx.sendPing();
         if (retry && retry.success && retry.ready) {
-          return { ok: true, recovered: true, version: retry.version };
+          return { ok: true, recovered: true, version: retry.version, pageSummary: retry.pageSummary };
         }
       } catch (err) {
         // 仍有接收端缺失类错误或超时：继续有界重试
@@ -145,6 +145,7 @@
       var response = await ctx.sendTask();
       return { ok: true, response: response };
     } catch (err) {
+      if (err?.name === 'TimeoutError') return fail('task-timeout', '网页尚未回应，正在核对任务状态。', errText(err));
       return fail('task-channel-error', '任务执行中与页面的连接中断，请刷新网页（F5）后重试', errText(err));
     }
   }

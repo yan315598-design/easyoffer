@@ -167,6 +167,9 @@ async function aiStepByStepFill(profile) {
   try {
     cacheJobMetaFromPage();
     const fastFillRes = await fillForm(profile, { task, signal: task.controller.signal, mode: 'full' });
+    task.stage = 'ai';
+    task.currentLabel = '';
+    syncFillTaskControls();
 
     const settingsRes = await runtimeSend({ action: 'getSettings' }, 8000);
     const settings = settingsRes?.settings || {};
@@ -220,6 +223,8 @@ async function aiStepByStepFill(profile) {
       const fieldRef = candidates[i];
       const promptField = resolveAiQuestionField(fieldRef);
       const labelText = fieldRef.label;
+      task.currentLabel = labelText;
+      if (typeof publishSidePanelTask === 'function') publishSidePanelTask();
       const maxLength = fieldRef.maxLength;
 
       showAiProgress(`AI 正在写 (${i + 1}/${candidates.length})：${escapeHtml(labelText.slice(0, 28))}`);

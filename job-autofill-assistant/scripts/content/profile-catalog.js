@@ -3,6 +3,7 @@
 'use strict';
 
 var  FIELD_LABELS = {
+  partyJoinDate: '入党时间', leagueJoinDate: '入团时间',
   fullName: '姓名', firstName: '名', lastName: '姓', middleName: '中间名',
   phone: '手机号码', phoneType: '手机类型', email: '电子邮箱', gender: '性别', birthDate: '出生日期', idCard: '身份证号',
   politicalStatus: '政治面貌', ethnicity: '民族', hometown: '籍贯', graduationDate: '毕业时间', maritalStatus: '婚姻状况', currentCity: '现居住城市',
@@ -606,4 +607,3 @@ function getCopyItemsForCategory(profile, category) {
 
   return items;
 }
-

@@ -47,6 +47,7 @@
         "scripts/content/region-yanyu.js",
         "scripts/content/dock.js",
         "scripts/content/dock-yanyu.js",
+        "scripts/content/panel-layout.js",
         "scripts/content/main.js",
         "scripts/content.js"
       ],

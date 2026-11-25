@@ -230,6 +230,19 @@ async function* repeatFillFields(profile, detected, options) {
     const { rows, fields } = repeatRows(module, detected);
     const source = repeatProfileEntries(module, profile);
     const entries = module.section === 'languageCertificates' ? repeatLanguageEntries(fields, source) : source;
+    // Some forms ask for details of one member without asking for their name.
+    // A repeated key, a second row or a conflicting existing value makes this binding ambiguous.
+    if (!rows.length && entries.length === 1 && profile[module.section]?.length === 1 && fields.length) {
+      const keys = fields.map(field => field.key);
+      const roots = new Set(fields.map(field => field.input.closest(REPEAT_ROW) || module.root));
+      const row = { root: module.root, fields };
+      if (roots.size === 1 && keys.every(Boolean) && new Set(keys).size === fields.length &&
+          (!fields.some(field => fieldHasValue(field.input)) ||
+           repeatIdentityMatches({ ...module, identity: keys }, row, entries).length === 1)) {
+        for (const field of fields) bindings.set(field.input, { entry: entries[0], key: field.key, module, row });
+        continue;
+      }
+    }
     const { assignments, remaining, ambiguous } = matchRepeatRows(module, rows, entries);
     for (const field of fields) bindings.set(field.input, {});
     for (const row of rows) {

@@ -184,6 +184,28 @@ function regionControlOverlapRatio(controlRect, selRect) {
   return regionRectsIntersectionArea(controlRect, selRect) / area;
 }
 
+function visibleRegionControlRect(el) {
+  const { left, top, right, bottom } = el.getBoundingClientRect();
+  const rect = { left, top, right, bottom };
+  for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    const clipsX = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX);
+    const clipsY = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY);
+    if (!clipsX && !clipsY) continue;
+    const frame = parent.getBoundingClientRect();
+    if (clipsX) {
+      rect.left = Math.max(rect.left, frame.left);
+      rect.right = Math.min(rect.right, frame.right);
+    }
+    if (clipsY) {
+      rect.top = Math.max(rect.top, frame.top);
+      rect.bottom = Math.min(rect.bottom, frame.bottom);
+    }
+    if (rect.left >= rect.right || rect.top >= rect.bottom) return null;
+  }
+  return rect;
+}
+
 // 纯函数：起止时间类 label 判定（开始/结束/整段）。具体词优先：开始时间→start，毕业/结束→end，起止/时间→整段
 function regionDateSideOfLabel(label) {
   const text = String(label || '');
@@ -352,7 +374,7 @@ function collectRegionFields(selRect) {
     const nameOrdinal = nameOrdinals.get(nameKey) || 0;
     nameOrdinals.set(nameKey, nameOrdinal + 1);
 
-    if (regionControlOverlapRatio(el.getBoundingClientRect(), selRect) <= REGION_OVERLAP_RATIO) return;
+    if (regionControlOverlapRatio(visibleRegionControlRect(el), selRect) <= REGION_OVERLAP_RATIO) return;
 
     if (fieldHasValue(el)) { skippedHasValue++; return; }
     const widget = el.tagName !== 'SELECT' && isWidgetSelectTrigger(el);
@@ -431,6 +453,23 @@ function isRegionFillActive() {
   return !!regionFillState;
 }
 
+// A manual popover uses the browser's viewport even when the site's root is transformed.
+// Pointer client coordinates and field bounding rectangles already use the same CSS pixels.
+function mountRegionOverlay(root) {
+  const html = document.documentElement || document.body;
+  html.appendChild(root);
+  if (root.showPopover) {
+    root.setAttribute('popover', 'manual');
+    root.showPopover();
+  }
+  const syncZoom = () => {
+    if (root.style.setProperty) root.style.setProperty('zoom', String(1 / (html.currentCSSZoom || 1)), 'important');
+  };
+  syncZoom();
+  root.addEventListener('pointerdown', syncZoom, true);
+  root.addEventListener('mousedown', syncZoom, true);
+}
+
 // 进入框选模式：全页遮罩（四块拼合）+ 十字参考线 + 顶部提示气泡。
 // 遮罩层接收全部指针事件，页面原生元素收不到点击；右键 preventDefault 仅在本模式内生效
 function enterRegionSelectMode(profile) {
@@ -458,7 +497,7 @@ function enterRegionSelectMode(profile) {
   [shadeTop, shadeLeft, shadeRight, shadeBottom, crossH, crossV, rectBox, hint, sizeBadge].forEach((node) => {
     root.appendChild(node);
   });
-  document.body.appendChild(root);
+  mountRegionOverlay(root);
 
   const viewW = () => window.innerWidth || document.documentElement.clientWidth || 0;
   const viewH = () => window.innerHeight || document.documentElement.clientHeight || 0;
@@ -470,7 +509,8 @@ function enterRegionSelectMode(profile) {
   };
   // 未拖拽或取消后：整页覆盖
   const shadeFull = () => {
-    setBlock(shadeTop, 0, 0, viewW(), viewH());
+    setBlock(shadeTop, 0, 0, 0, 0);
+    shadeTop.style.width = shadeTop.style.height = '100%';
     setBlock(shadeLeft, 0, 0, 0, 0);
     setBlock(shadeRight, 0, 0, 0, 0);
     setBlock(shadeBottom, 0, 0, 0, 0);
